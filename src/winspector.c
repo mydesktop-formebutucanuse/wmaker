@@ -442,6 +442,16 @@ static void changePage(WMWidget *bPtr, void *client_data)
 		WMUnmapWidget(panel->appFrm);
 }
 
+/*
+ * Whether a part of WM_CLASS names something: a client may set it to an
+ * empty string, and attributes saved for an empty name are ignored (see
+ * get_value_from_instanceclass), so the inspector offers no such choice.
+ */
+static Bool has_name(const char *name)
+{
+	return name && name[0] != '\0';
+}
+
 static int showIconFor(WMScreen *scrPtr, InspectorPanel *panel, const char *wm_instance, const char *wm_class, int flags)
 {
 	WMPixmap *pixmap = (WMPixmap *) NULL;
@@ -555,11 +565,12 @@ static void saveSettings(WMWidget *button, void *client_data)
 	/* Save will apply the changes and save them */
 	applySettings(panel->applyBtn, panel);
 
-	if (WMGetButtonSelected(panel->instRb) != 0) {
+	/* A choice the window has no name for is not created */
+	if (panel->instRb && WMGetButtonSelected(panel->instRb) != 0) {
 		key = WMCreatePLString(wwin->wm_instance);
-	} else if (WMGetButtonSelected(panel->clsRb) != 0) {
+	} else if (panel->clsRb && WMGetButtonSelected(panel->clsRb) != 0) {
 		key = WMCreatePLString(wwin->wm_class);
-	} else if (WMGetButtonSelected(panel->bothRb) != 0) {
+	} else if (panel->bothRb && WMGetButtonSelected(panel->bothRb) != 0) {
 		buf1 = StrConcatDot(wwin->wm_instance, wwin->wm_class);
 		key = WMCreatePLString(buf1);
 		wfree(buf1);
@@ -959,7 +970,7 @@ static void selectSpecification(WMWidget *bPtr, void *data)
 	char str[256];
 	WWindow *wwin = panel->inspected;
 
-	if (bPtr == panel->defaultRb && (wwin->wm_instance || wwin->wm_class))
+	if (bPtr == panel->defaultRb && (has_name(wwin->wm_instance) || has_name(wwin->wm_class)))
 		WMSetButtonEnabled(panel->applyBtn, False);
 	else
 		WMSetButtonEnabled(panel->applyBtn, True);
@@ -1011,7 +1022,7 @@ static InspectorPanel *createInspectorForWindow(WWindow *wwin, int xpos, int ypo
 	InspectorPanel *panel;
 	Window parent;
 	char *str = NULL, *tmp = NULL;
-	int x, y, btn_width, frame_width;
+	int x, y, btn_width, frame_width, spec_y;
 	WMButton *selectedBtn = NULL;
 
 	spec_text = _("The configuration will apply to all\n"
@@ -1036,7 +1047,7 @@ static InspectorPanel *createInspectorForWindow(WWindow *wwin, int xpos, int ypo
 	WMMoveWidget(panel->saveBtn, (2 * (btn_width + WMScaled(10))) + WMScaled(15), PHEIGHT - WMScaled(40));
 	WMSetButtonText(panel->saveBtn, _("Save"));
 	WMResizeWidget(panel->saveBtn, btn_width, WMScaled(28));
-	if (wPreferences.flags.noupdates || !(wwin->wm_class || wwin->wm_instance))
+	if (wPreferences.flags.noupdates || !(has_name(wwin->wm_class) || has_name(wwin->wm_instance)))
 		WMSetButtonEnabled(panel->saveBtn, False);
 
 	panel->applyBtn = WMCreateCommandButton(panel->win);
@@ -1072,18 +1083,23 @@ static InspectorPanel *createInspectorForWindow(WWindow *wwin, int xpos, int ypo
 	WMResizeWidget(panel->specFrm, frame_width, WMScaled(145));
 
 	panel->defaultRb = WMCreateRadioButton(panel->specFrm);
-	WMMoveWidget(panel->defaultRb, WMScaled(10), WMScaled(78));
 	WMResizeWidget(panel->defaultRb, frame_width - (2 * WMScaled(10)), WMScaled(20));
 	WMSetButtonText(panel->defaultRb, _("Defaults for all windows"));
 	WMSetButtonSelected(panel->defaultRb, False);
 	WMSetButtonAction(panel->defaultRb, selectSpecification, panel);
 
-	if (wwin->wm_class && wwin->wm_instance) {
+	/* The choices are stacked from the top, without gaps for the missing ones */
+	spec_y = 18;
+
+	/* "instance.class" names the window even if one part is empty */
+	if (wwin->wm_class && wwin->wm_instance &&
+	    (has_name(wwin->wm_instance) || has_name(wwin->wm_class))) {
 		tmp = wstrconcat(wwin->wm_instance, ".");
 		str = wstrconcat(tmp, wwin->wm_class);
 
 		panel->bothRb = WMCreateRadioButton(panel->specFrm);
-		WMMoveWidget(panel->bothRb, WMScaled(10), WMScaled(18));
+		WMMoveWidget(panel->bothRb, WMScaled(10), WMScaled(spec_y));
+		spec_y += 20;
 		WMResizeWidget(panel->bothRb, frame_width - (2 * WMScaled(10)), WMScaled(20));
 		WMSetButtonText(panel->bothRb, str);
 		wfree(tmp);
@@ -1096,9 +1112,10 @@ static InspectorPanel *createInspectorForWindow(WWindow *wwin, int xpos, int ypo
 		WMSetButtonAction(panel->bothRb, selectSpecification, panel);
 	}
 
-	if (wwin->wm_instance) {
+	if (has_name(wwin->wm_instance)) {
 		panel->instRb = WMCreateRadioButton(panel->specFrm);
-		WMMoveWidget(panel->instRb, WMScaled(10), WMScaled(38));
+		WMMoveWidget(panel->instRb, WMScaled(10), WMScaled(spec_y));
+		spec_y += 20;
 		WMResizeWidget(panel->instRb, frame_width - (2 * WMScaled(10)), WMScaled(20));
 		WMSetButtonText(panel->instRb, wwin->wm_instance);
 		WMGroupButtons(panel->defaultRb, panel->instRb);
@@ -1109,9 +1126,10 @@ static InspectorPanel *createInspectorForWindow(WWindow *wwin, int xpos, int ypo
 		WMSetButtonAction(panel->instRb, selectSpecification, panel);
 	}
 
-	if (wwin->wm_class) {
+	if (has_name(wwin->wm_class)) {
 		panel->clsRb = WMCreateRadioButton(panel->specFrm);
-		WMMoveWidget(panel->clsRb, WMScaled(10), WMScaled(58));
+		WMMoveWidget(panel->clsRb, WMScaled(10), WMScaled(spec_y));
+		spec_y += 20;
 		WMResizeWidget(panel->clsRb, frame_width - (2 * WMScaled(10)), WMScaled(20));
 		WMSetButtonText(panel->clsRb, wwin->wm_class);
 		WMGroupButtons(panel->defaultRb, panel->clsRb);
@@ -1121,6 +1139,8 @@ static InspectorPanel *createInspectorForWindow(WWindow *wwin, int xpos, int ypo
 
 		WMSetButtonAction(panel->clsRb, selectSpecification, panel);
 	}
+
+	WMMoveWidget(panel->defaultRb, WMScaled(10), WMScaled(spec_y));
 
 	panel->selWinB = WMCreateCommandButton(panel->specFrm);
 	WMMoveWidget(panel->selWinB, WMScaled(20), WMScaled(145) - WMScaled(24) - WMScaled(10));
@@ -1148,7 +1168,7 @@ static InspectorPanel *createInspectorForWindow(WWindow *wwin, int xpos, int ypo
 	else
 		WMSetButtonEnabled(panel->attrChk[3], True);
 
-	if (!wwin->wm_class && !wwin->wm_instance)
+	if (!has_name(wwin->wm_class) && !has_name(wwin->wm_instance))
 		WMSetPopUpButtonItemEnabled(panel->pagePopUp, 0, False);
 
 	WMRealizeWidget(panel->win);

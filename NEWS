@@ -117,6 +117,20 @@ change of the window name while the window was miniaturized. It now shows
 the icon name of the window, else its name as the titlebar does, and
 follows both.
 
+
+Empty names in WM_CLASS
+-----------------------
+
+Some programs set the instance or the class in their WM_CLASS property to
+an empty string. The inspector showed an unnamed choice for it in the
+Window Specification panel, and the settings saved with that choice were
+stored under the empty name, so they applied to every window with an empty
+instance or class, whatever its program. The inspector no longer offers
+that choice, and settings stored under the empty name in WMWindowAttributes
+are ignored; such an entry can be deleted from the file. Settings stored
+for "instance.class" with one empty part (for example ".Foo") still apply
+to the windows of that program.
+
 Border around undecorated windows
 ---------------------------------
 

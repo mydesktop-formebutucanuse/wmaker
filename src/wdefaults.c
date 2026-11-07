@@ -163,11 +163,17 @@ static WMPropList *get_value(WMPropList * dict_win, WMPropList * dict_class, WMP
 	return default_value;
 }
 
+/*
+ * The attributes saved for a name. An empty name (a client may set the
+ * instance or the class in WM_CLASS to an empty string) names no program:
+ * attributes saved for it would apply to every window with an empty name,
+ * so they are ignored.
+ */
 static WMPropList *get_value_from_instanceclass(const char *value)
 {
 	WMPropList *key, *val = NULL;
 
-	if (!value)
+	if (!value || value[0] == '\0')
 		return NULL;
 
 	key = WMCreatePLString(value);
@@ -338,8 +344,8 @@ static WMPropList *get_generic_value(const char *instance, const char *class,
 			value = WMGetFromPLDictionary(dict, option);
 	}
 
-	/* Search the icon name using instance */
-	if (!value && instance) {
+	/* Search the icon name using instance (see get_value_from_instanceclass) */
+	if (!value && instance && instance[0] != '\0') {
 		key = WMCreatePLString(instance);
 
 		dict = WMGetFromPLDictionary(w_global.domain.window_attr->dictionary, key);
@@ -350,7 +356,7 @@ static WMPropList *get_generic_value(const char *instance, const char *class,
 	}
 
 	/* Search the icon name using class */
-	if (!value && class) {
+	if (!value && class && class[0] != '\0') {
 		key = WMCreatePLString(class);
 
 		dict = WMGetFromPLDictionary(w_global.domain.window_attr->dictionary, key);
