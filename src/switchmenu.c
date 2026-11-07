@@ -51,9 +51,8 @@ static void wsobserver(void *self, WMNotification * notif);
 
 static WPixmap *switchMenuIconForWindow(WScreen *scr, WWindow *wwin)
 {
-	RImage *image = NULL;
+	RImage *image;
 	WPixmap *pix;
-	WApplication *wapp;
 	int max_size;
 
 	if (!scr || !wwin)
@@ -63,18 +62,8 @@ static WPixmap *switchMenuIconForWindow(WScreen *scr, WWindow *wwin)
 	if (max_size < WMScaled(12))
 		max_size = WMScaled(12);
 
-	/* Prefer the actual appicon image when available */
-	wapp = wApplicationOf(wwin->main_window);
-	if (wapp && wapp->app_icon && wapp->app_icon->icon && wapp->app_icon->icon->file_image) {
-		image = RRetainImage(wapp->app_icon->icon->file_image);
-	}
-
-	/* Fall back to _NET_WM_ICON, then the default icon */
-	if (!image && !WFLAGP(wwin, always_user_icon) && wwin->net_icon_image)
-		image = RRetainImage(wwin->net_icon_image);
-	if (!image)
-		image = get_icon_image(scr, wwin->wm_instance, wwin->wm_class, max_size);
-
+	/* The same image as in the switch panel */
+	image = wIconGetImageForWindow(wwin);
 	if (!image)
 		return NULL;
 

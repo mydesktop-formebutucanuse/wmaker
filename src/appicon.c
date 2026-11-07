@@ -64,7 +64,8 @@
 
 static void iconDblClick(WObjDescriptor * desc, XEvent * event);
 static void iconExpose(WObjDescriptor * desc, XEvent * event);
-static void wApplicationSaveIconPathFor(const char *iconPath, const char *wm_instance, const char *wm_class);
+static void wApplicationSaveIconPathFor(const char *iconPath, const char *wm_instance, const char *wm_class,
+					Bool replace_cached);
 static WAppIcon *wAppIconCreate(WWindow * leader_win);
 static void add_to_appicon_list(WScreen *scr, WAppIcon *appicon);
 static void remove_from_appicon_list(WScreen *scr, WAppIcon *appicon);
@@ -99,7 +100,7 @@ void wApplicationExtractDirPackIcon(const char *path, const char *wm_instance, c
 			wfree(tmp);
 
 		if (iconPath) {
-			wApplicationSaveIconPathFor(iconPath, wm_instance, wm_class);
+			wApplicationSaveIconPathFor(iconPath, wm_instance, wm_class, False);
 			wfree(iconPath);
 		}
 	}
@@ -154,9 +155,8 @@ void create_appicon_for_application(WApplication *wapp, WWindow *wwin)
 
 	/* If app_icon was not found, create it */
 	if (!wapp->app_icon) {
-		/* Create the icon */
+		/* Create the icon (its image is chosen by wIconUpdate) */
 		wapp->app_icon = wAppIconCreate(wapp->main_window_desc);
-		wIconUpdate(wapp->app_icon->icon);
 
 		/* Now, paint the icon */
 		if (!WFLAGP(wapp->main_window_desc, no_appicon))
@@ -453,11 +453,20 @@ void save_appicon(WAppIcon *aicon)
 	if (!aicon->docked || aicon->attracted)
 		return;
 
+	/* The application ignores the client icons and the appicon shows an
+	 * icon file (of one of its windows maybe): the dock shows it too
+	 * when the application is not running, rather than a client icon
+	 * saved before */
+	if (aicon->icon->image_file && wIconIgnoresClientIcons(aicon->icon)) {
+		wApplicationSaveIconPathFor(aicon->icon->image_file, aicon->wm_instance, aicon->wm_class, True);
+		return;
+	}
+
 	path = wIconStore(aicon->icon);
 	if (!path)
 		return;
 
-	wApplicationSaveIconPathFor(path, aicon->wm_instance, aicon->wm_class);
+	wApplicationSaveIconPathFor(path, aicon->wm_instance, aicon->wm_class, False);
 	wfree(path);
 }
 
@@ -1099,7 +1108,12 @@ Bool wHandleAppIconMove(WAppIcon *aicon, XEvent *event)
 }
 
 /* This function save the application icon and store the path in the Dictionary */
-static void wApplicationSaveIconPathFor(const char *iconPath, const char *wm_instance, const char *wm_class)
+/*
+ * Save the icon file for a class, unless one is set already: replace_cached
+ * replaces a client icon saved by wIconStore though.
+ */
+static void wApplicationSaveIconPathFor(const char *iconPath, const char *wm_instance, const char *wm_class,
+					Bool replace_cached)
 {
 	WMPropList *dict = w_global.domain.window_attr->dictionary;
 	WMPropList *adict, *key, *iconk;
@@ -1115,6 +1129,15 @@ static void wApplicationSaveIconPathFor(const char *iconPath, const char *wm_ins
 
 	if (adict) {
 		val = WMGetFromPLDictionary(adict, iconk);
+
+		if (val && replace_cached && WMIsPLString(val)) {
+			char *path = FindImage(wPreferences.icon_path, WMGetFromPLString(val));
+
+			if ((!path || wIconIsCachedFile(path)) && strcmp(WMGetFromPLString(val), iconPath) != 0)
+				val = NULL;
+			if (path)
+				wfree(path);
+		}
 	} else {
 		/* no dictionary for app, so create one */
 		adict = WMCreatePLDictionary(NULL, NULL);
@@ -1193,16 +1216,15 @@ static void create_appicon_from_dock(WWindow *wwin, WApplication *wapp, Window m
 		wapp->app_icon->running = 1;
 		wapp->app_icon->icon->owner = mainw;
 
-		if (!WFLAGP(wwin, always_user_icon)) {
-			if (mainw->wm_hints && (mainw->wm_hints->flags & IconWindowHint))
-				wapp->app_icon->icon->icon_win = mainw->wm_hints->icon_window;
+		if (!WFLAGP(wwin, always_user_icon) &&
+		    mainw->wm_hints && (mainw->wm_hints->flags & IconWindowHint))
+			wapp->app_icon->icon->icon_win = mainw->wm_hints->icon_window;
 
-			/* Update the icon images */
-			wIconUpdate(wapp->app_icon->icon);
+		/* Update the icon images */
+		wIconUpdate(wapp->app_icon->icon);
 
-			/* Paint it */
-			wAppIconPaint(wapp->app_icon);
-		}
+		/* Paint it */
+		wAppIconPaint(wapp->app_icon);
 	}
 }
 

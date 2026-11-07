@@ -38,8 +38,9 @@ typedef struct WIcon {
 
 	Window 		icon_win;	/* client suplied icon window */
 
-	char		*file;		/* the file with the icon image */
-	RImage 		*file_image;	/* the image from the file */
+	char		*file;		/* the icon file the user set */
+	RImage 		*file_image;	/* the image shown (see wIconUpdate) */
+	char		*image_file;	/* the file of that image, if any */
 
 	unsigned int 	tile_type:4;
 	unsigned int 	show_title:1;
@@ -48,6 +49,7 @@ typedef struct WIcon {
 	unsigned int	shadowed:1;	/* If the icon is to be blured */
 	unsigned int 	mapped:1;
 	unsigned int	highlighted:1;
+	unsigned int	client_image:1;	/* the image comes from the client */
 
 	Pixmap 		pixmap;
 	Pixmap		mini_preview;
@@ -71,13 +73,14 @@ int wIconChangeImageFile(WIcon *icon, const char *file);
 
 RImage *wIconValidateIconSize(RImage *icon, int max_size);
 RImage *wIconScaleImage(RImage *icon, int max_size);
-RImage *get_rimage_icon_from_wm_hints(WIcon *icon);
+RImage *wIconGetImageForWindow(WWindow *wwin);
+Bool wIconIgnoresClientIcons(WIcon *icon);
+Bool wIconIsCachedFile(const char *path);
 
 char *wIconStore(WIcon *icon);
 char *get_name_for_instance_class(const char *wm_instance, const char *wm_class);
 
 void wIconSetHighlited(WIcon *icon, Bool flag);
-void set_icon_image_from_image(WIcon *icon, RImage *image);
 void set_icon_minipreview(WIcon *icon, RImage *image);
 
 void remove_cache_icon(char *filename);

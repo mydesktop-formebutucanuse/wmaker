@@ -1534,6 +1534,12 @@ static void updateWindowType(WWindow *wwin)
 	}
 }
 
+/* Whether the client says nothing of the type of its window, or that it is a normal one */
+Bool wNETWMIsNormalWindow(WWindow *wwin)
+{
+	return wwin->type == None || wwin->type == net_wm_window_type_normal;
+}
+
 void wNETWMCheckClientHints(WWindow *wwin, int *layer, int *workspace)
 {
 	Atom type_ret;

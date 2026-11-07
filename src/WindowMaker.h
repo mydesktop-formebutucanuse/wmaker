@@ -162,6 +162,11 @@ typedef enum {
 #define WIS_NONE        3
 #define WIS_RANDOM	4 /* secret */
 
+/* appicon for the windows of no application (AppIconForUngroupedWindows) */
+#define WUA_NEVER	0
+#define WUA_IF_ICON_SET	1
+#define WUA_ALWAYS	2
+
 /* switchmenu actions */
 #define ACTION_ADD		0
 #define ACTION_REMOVE		1
@@ -374,6 +379,7 @@ extern struct WPreferences {
 	char auto_arrange_icons;           /* automagically arrange icons */
 	char icon_box_position;            /* position to place icons */
 	signed char iconification_style;   /* position to place icons */
+	signed char ungrouped_appicon;     /* appicon for windows of no application */
 	char disable_root_mouse;           /* disable button events in root window */
 	char auto_focus;                   /* focus window when it's mapped */
 	char *icon_back_file;              /* background image for icons */

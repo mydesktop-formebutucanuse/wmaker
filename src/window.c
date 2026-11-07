@@ -688,6 +688,39 @@ static int matchIdentifier(const void *item, const void *cdata)
  *
  *----------------------------------------------------------------
  */
+/*
+ * A window that tells of no application (no group leader, no client leader,
+ * and not a transient) gets no appicon, and so no icon the user can set for
+ * the application (kitty and other GLFW programs are like this). Give it one
+ * like EmulateAppIcon does, as AppIconForUngroupedWindows says: by default
+ * when the user set an icon for its class. The windows of a class share the
+ * appicon (SharedAppIcon).
+ */
+static Bool wantsUngroupedAppIcon(WWindow *wwin)
+{
+	if (wwin->main_window != None || wwin->transient_for != None)
+		return False;
+
+	if (wwin->flags.is_dockapp || wwin->flags.is_gnustep || WFLAGP(wwin, no_appicon))
+		return False;
+
+	if (!wwin->wm_class && !wwin->wm_instance)
+		return False;
+
+	/* not a panel, a splash screen, a notification... */
+	if (!wNETWMIsNormalWindow(wwin))
+		return False;
+
+	switch (wPreferences.ungrouped_appicon) {
+	case WUA_ALWAYS:
+		return True;
+	case WUA_IF_ICON_SET:
+		return wDefaultGetIconFile(wwin->wm_instance, wwin->wm_class, False) != NULL;
+	default:
+		return False;
+	}
+}
+
 WWindow *wManageWindow(WScreen *scr, Window window)
 {
 	WWindow *wwin;
@@ -844,7 +877,7 @@ WWindow *wManageWindow(WScreen *scr, Window window)
 	wWindowSetupInitialAttributes(wwin, &window_level, &workspace);
 
 	/* Make broken apps behave as a nice app. */
-	if (WFLAGP(wwin, emulate_appicon))
+	if (WFLAGP(wwin, emulate_appicon) || wantsUngroupedAppIcon(wwin))
 		wwin->main_window = wwin->client_win;
 
 	fixLeaderProperties(wwin);
@@ -1407,6 +1440,10 @@ WWindow *wManageWindow(WScreen *scr, Window window)
 		wwin->prev = NULL;
 	}
 
+	/* The appicon may depend on the icon settings of this window */
+	if (wwin->main_window != None)
+		wApplicationUpdateIconFor(wwin);
+
 	/* raise is set to true if we un-hid the app when this window was born.
 	 * we raise, else old windows of this app will be above this new one. */
 	if (raise)
@@ -1763,6 +1800,11 @@ void wUnmanageWindow(WWindow *wwin, Bool restore, Bool destroyed)
 		if (wPreferences.highlight_active_app)
 			wApplicationDeactivate(oapp);
 	}
+
+	/* The appicon may have depended on the icon settings of this window
+	 * (it is out of the window list now) */
+	if (oapp)
+		wApplicationUpdateIconFor(wwin);
 
 	wNETCleanupFrameExtents(wwin);
 

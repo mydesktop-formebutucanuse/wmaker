@@ -48,6 +48,10 @@ WApplication *wApplicationCreate(struct WWindow *wwin);
 WApplication *wApplicationOf(Window window);
 void wApplicationDestroy(WApplication *wapp);
 
+Bool wApplicationIgnoresClientIcons(WApplication *wapp);
+void wApplicationUpdateIcon(WApplication *wapp);
+void wApplicationUpdateIconFor(struct WWindow *wwin);
+
 void wAppBounce(WApplication *);
 void wAppBounceWhileUrgent(WApplication *);
 void wApplicationActivate(WApplication *);

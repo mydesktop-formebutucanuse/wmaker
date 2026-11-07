@@ -260,6 +260,13 @@ static WOptionEnumeration seIconificationStyles[] = {
 	{NULL, 0, 0}
 };
 
+static WOptionEnumeration seUngroupedAppIcons[] = {
+	{"Never", WUA_NEVER, 0},
+	{"IfIconSet", WUA_IF_ICON_SET, 0},
+	{"Always", WUA_ALWAYS, 0},
+	{NULL, 0, 0}
+};
+
 static WOptionEnumeration seJustifications[] = {
 	{"Left", WTJ_LEFT, 0},
 	{"Center", WTJ_CENTER, 0},
@@ -483,6 +490,8 @@ WDefaultEntry optionList[] = {
 	    &wPreferences.highlight_active_app, getBool, NULL, NULL, NULL},
 	{"AutoArrangeIcons", "NO", NULL,
 	    &wPreferences.auto_arrange_icons, getBool, NULL, NULL, NULL},
+	{"AppIconForUngroupedWindows", "IfIconSet", seUngroupedAppIcons,
+	    &wPreferences.ungrouped_appicon, getEnum, NULL, NULL, NULL},
 	{"NoWindowOverDock", "NO", NULL,
 	    &wPreferences.no_window_over_dock, getBool, updateUsableArea, NULL, NULL},
 	{"NoWindowOverIcons", "NO", NULL,

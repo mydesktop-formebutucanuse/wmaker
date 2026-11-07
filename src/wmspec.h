@@ -55,6 +55,7 @@ void wNETWMCheckInitialClientState(WWindow *wwin);
 void wNETWMCheckInitialFrameState(WWindow *wwin);
 Bool wNETWMProcessClientMessage(XClientMessageEvent *event);
 void wNETWMCheckClientHints(WWindow *wwin, int *layer, int *workspace);
+Bool wNETWMIsNormalWindow(WWindow *wwin);
 void wNETWMCheckClientHintChange(WWindow *wwin, XPropertyEvent *event);
 void wNETWMUpdateActions(WWindow *wwin, Bool del);
 void wNETWMUpdateDesktop(WScreen *scr);

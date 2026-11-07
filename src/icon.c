@@ -60,13 +60,11 @@ static void miniwindowDblClick(WObjDescriptor *desc, XEvent *event);
 static WIcon *icon_create_core(WScreen *scr, int coord_x, int coord_y);
 
 static void set_dockapp_in_icon(WIcon *icon);
-static void get_rimage_icon_from_icon_win(WIcon *icon);
-static void get_rimage_icon_from_user_icon(WIcon *icon);
-static void get_rimage_icon_from_default_icon(WIcon *icon);
-static void get_rimage_icon_from_x11(WIcon *icon);
+static RImage *get_window_image_from_wm_hints(WWindow *wwin);
 
 static void icon_update_pixmap(WIcon *icon, RImage *image);
 static void unset_icon_image(WIcon *icon);
+static void set_icon_image(WIcon *icon, RImage *image, const char *path, Bool client);
 
 /****** Notification Observers ******/
 
@@ -204,6 +202,8 @@ static WIcon *icon_create_core(WScreen *scr, int coord_x, int coord_y)
 	/* Icon image */
 	icon->file = NULL;
 	icon->file_image = NULL;
+	icon->image_file = NULL;
+	icon->client_image = 0;
 	icon->icon_win = None;
 
 	return icon;
@@ -239,6 +239,8 @@ void wIconDestroy(WIcon *icon)
 		XFreePixmap(dpy, icon->mini_preview);
 
 	unset_icon_image(icon);
+	if (icon->file)
+		wfree(icon->file);
 
 	wCoreDestroy(icon->core);
 	wfree(icon);
@@ -411,6 +413,11 @@ RImage *wIconScaleImage(RImage *icon, int max_size)
 	return wIconValidateIconSize(icon, max_size);
 }
 
+/*
+ * Set the icon file of the user for an icon, and show it. Returns 0 if the
+ * file can't be found or loaded. The next wIconUpdate shows the client icon
+ * again, unless client icons are ignored.
+ */
 int wIconChangeImageFile(WIcon *icon, const char *file)
 {
 	WScreen *scr = icon->core->screen_ptr;
@@ -432,12 +439,13 @@ int wIconChangeImageFile(WIcon *icon, const char *file)
 		return 0;
 	}
 
-	/* Set the new image */
-	set_icon_image_from_image(icon, image);
-	icon->file = wstrdup(path);
+	if (icon->file)
+		wfree(icon->file);
+	icon->file = path;
+
+	set_icon_image(icon, image, path, False);
 	update_icon_pixmap(icon);
 
-	wfree(path);
 	return 1;
 }
 
@@ -495,13 +503,13 @@ static char *get_icon_cache_path(void)
 	return NULL;
 }
 
-static RImage *get_wwindow_image_from_wmhints(WWindow *wwin, WIcon *icon)
+static RImage *get_wwindow_image_from_wmhints(WWindow *wwin)
 {
 	RImage *image = NULL;
 	XWMHints *hints = wwin->wm_hints;
 
 	if (hints && (hints->flags & IconPixmapHint) && hints->icon_pixmap != None)
-		image = RCreateImageFromDrawable(icon->core->screen_ptr->rcontext,
+		image = RCreateImageFromDrawable(wwin->screen_ptr->rcontext,
 						 hints->icon_pixmap,
 						 (hints->flags & IconMaskHint)
 						 ? hints->icon_mask : None);
@@ -559,7 +567,7 @@ char *wIconStore(WIcon *icon)
 	if (wwin->net_icon_image)
 		image = RRetainImage(wwin->net_icon_image);
 	else
-		image = get_wwindow_image_from_wmhints(wwin, icon);
+		image = get_wwindow_image_from_wmhints(wwin);
 
 	if (!image) {
 		wfree(path);
@@ -578,22 +586,26 @@ char *wIconStore(WIcon *icon)
 	return filename;
 }
 
-void remove_cache_icon(char *filename)
+/* Whether a file is a client icon saved by wIconStore */
+Bool wIconIsCachedFile(const char *path)
 {
 	char *cachepath;
+	Bool cached;
 
-	if (!filename)
-		return;
+	if (!path)
+		return False;
 
-	cachepath = get_icon_cache_path();
-	if (!cachepath)
-		return;
-
-	/* Filename check/parse could be here */
-	if (!strncmp(filename, cachepath, strlen(cachepath)))
-		unlink(filename);
-
+	cachepath = wstrconcat(wuserdatapath(), CACHE_ICON_PATH "/");
+	cached = (strncmp(path, cachepath, strlen(cachepath)) == 0);
 	wfree(cachepath);
+
+	return cached;
+}
+
+void remove_cache_icon(char *filename)
+{
+	if (wIconIsCachedFile(filename))
+		unlink(filename);
 }
 
 static void cycleColor(void *data)
@@ -638,28 +650,34 @@ void wIconSelect(WIcon *icon)
 	}
 }
 
+/* Forget the image shown */
 static void unset_icon_image(WIcon *icon)
 {
-	if (icon->file) {
-		wfree(icon->file);
-		icon->file = NULL;
-	}
-
 	if (icon->file_image) {
 		RReleaseImage(icon->file_image);
 		icon->file_image = NULL;
 	}
+
+	if (icon->image_file) {
+		wfree(icon->image_file);
+		icon->image_file = NULL;
+	}
+
+	icon->client_image = 0;
 }
 
-void set_icon_image_from_image(WIcon *icon, RImage *image)
+/*
+ * Show an image (the reference is taken over): path is the file it comes
+ * from, if any, and client tells if it comes from the client.
+ */
+static void set_icon_image(WIcon *icon, RImage *image, const char *path, Bool client)
 {
-	if (!icon)
-		return;
-
 	unset_icon_image(icon);
 
-	icon->file_image = NULL;
 	icon->file_image = image;
+	if (path)
+		icon->image_file = wstrdup(path);
+	icon->client_image = client;
 }
 
 void set_icon_minipreview(WIcon *icon, RImage *image)
@@ -679,34 +697,256 @@ void set_icon_minipreview(WIcon *icon, RImage *image)
 	RReleaseImage(scaled_mini_preview);
 }
 
-void wIconUpdate(WIcon *icon)
+/*
+ * Choosing the image of an icon
+ *
+ * Every icon showing an application or a window (appicon, miniwindow, and
+ * the switch panel and window list entries through wIconGetImageForWindow)
+ * follows the same order:
+ *
+ *  1. The client icon (icon window, _NET_WM_ICON, WM_HINTS icon pixmap),
+ *     unless client icons are ignored ("Ignore client supplied icon").
+ *  2. The icon file the user set.
+ *  3. The default icon.
+ *
+ * The icon file is kept while a client icon is shown, so it comes back as
+ * soon as client icons are ignored.
+ *
+ * An application ignores the client icons when its group leader or any of
+ * its windows does: the leader is often a hidden window with a class of its
+ * own the user never sets anything for. Its icon file is the one of the
+ * leader (or of the dock), else the one of its windows. A window without an
+ * icon of its own shows the icon of its application.
+ */
+
+/* The application the icon is the appicon of (if it is running) */
+static WApplication *icon_application(WIcon *icon)
 {
-	WWindow *wwin = NULL;
+	WApplication *wapp;
 
-	if (icon && icon->owner)
-		wwin = icon->owner;
+	if (!icon->owner)
+		return NULL;
 
-	if (wwin && WFLAGP(wwin, always_user_icon)) {
-		/* Forced use user_icon */
-		get_rimage_icon_from_user_icon(icon);
-	} else if (icon->icon_win != None) {
-		/* Get the Pixmap from the WIcon */
-		get_rimage_icon_from_icon_win(icon);
-	} else if (wwin && wwin->net_icon_image) {
-		/* Use _NET_WM_ICON icon */
-		get_rimage_icon_from_x11(icon);
-	} else if (wwin && wwin->wm_hints && (wwin->wm_hints->flags & IconPixmapHint)) {
-		/* Get the Pixmap from the wm_hints, else, from the user */
-		unset_icon_image(icon);
-		icon->file_image = get_rimage_icon_from_wm_hints(icon);
-		if (!icon->file_image)
-			get_rimage_icon_from_user_icon(icon);
-	} else {
-		/* Get the Pixmap from the user */
-		get_rimage_icon_from_user_icon(icon);
+	wapp = wApplicationOf(icon->owner->main_window);
+	if (wapp && wapp->main_window_desc == icon->owner)
+		return wapp;
+
+	return NULL;
+}
+
+Bool wIconIgnoresClientIcons(WIcon *icon)
+{
+	WApplication *wapp;
+
+	if (!icon->owner)
+		return False;
+
+	wapp = icon_application(icon);
+	if (wapp)
+		return wApplicationIgnoresClientIcons(wapp);
+
+	return WFLAGP(icon->owner, always_user_icon);
+}
+
+/* The client icon of a window, other than an icon window */
+static RImage *get_window_client_image(WWindow *wwin)
+{
+	if (wwin->net_icon_image)
+		return RRetainImage(wwin->net_icon_image);
+
+	if (wwin->wm_hints && (wwin->wm_hints->flags & IconPixmapHint))
+		return get_window_image_from_wm_hints(wwin);
+
+	return NULL;
+}
+
+static Bool set_icon_image_from_client(WIcon *icon, WWindow *wwin)
+{
+	RImage *image;
+
+	/* An icon window is shown as is (see update_icon_pixmap) */
+	if (icon->icon_win != None) {
+		set_icon_image(icon, get_window_image_from_x11(icon->icon_win), NULL, True);
+		return True;
 	}
 
+	image = get_window_client_image(wwin);
+	if (!image)
+		return False;
+
+	set_icon_image(icon, image, NULL, True);
+	return True;
+}
+
+/* Show the image of a file, unless it is the one shown already */
+static Bool set_icon_image_from_file(WIcon *icon, const char *path)
+{
+	RImage *image;
+
+	if (icon->file_image && icon->image_file && strcmp(icon->image_file, path) == 0)
+		return True;
+
+	image = get_rimage_from_file(icon->core->screen_ptr, path, wPreferences.icon_size);
+	if (!image)
+		return False;
+
+	set_icon_image(icon, image, path, False);
+	return True;
+}
+
+static RImage *get_default_icon_image(WScreen *scr)
+{
+	if (!scr->def_icon_rimage)
+		scr->def_icon_rimage = get_default_image(scr);
+
+	return RRetainImage(scr->def_icon_rimage);
+}
+
+/*
+ * The icon file of an application: the one of the leader unless it is just
+ * a client icon saved for the dock, else the one of its windows (those
+ * ignoring the client icons first, the most recently focused first).
+ */
+static char *get_application_icon_file(WIcon *icon, WApplication *wapp)
+{
+	WScreen *scr = icon->core->screen_ptr;
+	WWindow *wwin;
+	char *path = NULL;
+	int pass;
+
+	if (icon->file && !wIconIsCachedFile(icon->file))
+		return wstrdup(icon->file);
+
+	for (pass = 0; pass < 2 && !path; pass++) {
+		for (wwin = scr->focused_window; wwin && !path; wwin = wwin->prev) {
+			if (wwin->main_window != wapp->main_window)
+				continue;
+
+			if (!WFLAGP(wwin, always_user_icon) == (pass == 0))
+				continue;
+
+			path = get_icon_filename(wwin->wm_instance, wwin->wm_class, NULL, False);
+		}
+	}
+
+	if (!path && icon->file)
+		path = wstrdup(icon->file);
+
+	return path;
+}
+
+static void update_application_icon(WIcon *icon, WApplication *wapp)
+{
+	char *path;
+
+	if (!wApplicationIgnoresClientIcons(wapp) && set_icon_image_from_client(icon, icon->owner))
+		return;
+
+	path = get_application_icon_file(icon, wapp);
+	if (path && set_icon_image_from_file(icon, path)) {
+		wfree(path);
+		return;
+	}
+
+	if (path)
+		wfree(path);
+
+	set_icon_image(icon, get_default_icon_image(icon->core->screen_ptr), NULL, False);
+}
+
+/*
+ * The appicon of the application of a window, if a window without an icon
+ * of its own can show it: when the window ignores the client icons, only an
+ * icon file is fine.
+ */
+static WIcon *get_application_icon_for(WWindow *wwin)
+{
+	WApplication *wapp;
+	WIcon *aicon;
+
+	wapp = wApplicationOf(wwin->main_window);
+	if (!wapp || !wapp->app_icon)
+		return NULL;
+
+	aicon = wapp->app_icon->icon;
+	if (!aicon || !aicon->file_image)
+		return NULL;
+
+	if (aicon->image_file || (aicon->client_image && !WFLAGP(wwin, always_user_icon)))
+		return aicon;
+
+	return NULL;
+}
+
+/* The miniwindow of a window, or a dock icon not owned by a running application */
+static void update_window_icon(WIcon *icon)
+{
+	WWindow *wwin = icon->owner;
+	WIcon *aicon;
+
+	if (wwin && !WFLAGP(wwin, always_user_icon) && set_icon_image_from_client(icon, wwin))
+		return;
+
+	if (icon->file && set_icon_image_from_file(icon, icon->file))
+		return;
+
+	aicon = wwin ? get_application_icon_for(wwin) : NULL;
+	if (aicon) {
+		set_icon_image(icon, RRetainImage(aicon->file_image), aicon->image_file, aicon->client_image);
+		return;
+	}
+
+	set_icon_image(icon, get_default_icon_image(icon->core->screen_ptr), NULL, False);
+}
+
+void wIconUpdate(WIcon *icon)
+{
+	WApplication *wapp;
+
+	if (!icon)
+		return;
+
+	wapp = icon_application(icon);
+	if (wapp)
+		update_application_icon(icon, wapp);
+	else
+		update_window_icon(icon);
+
 	update_icon_pixmap(icon);
+}
+
+/*
+ * The image of a window for the switch panel and the window list: the one
+ * its miniwindow shows, or would show. The reference is the caller's.
+ */
+RImage *wIconGetImageForWindow(WWindow *wwin)
+{
+	RImage *image;
+	WIcon *aicon;
+	char *path;
+
+	if (wwin->icon && wwin->icon->file_image)
+		return RRetainImage(wwin->icon->file_image);
+
+	if (!WFLAGP(wwin, always_user_icon)) {
+		image = get_window_client_image(wwin);
+		if (image)
+			return image;
+	}
+
+	path = get_icon_filename(wwin->wm_instance, wwin->wm_class, NULL, False);
+	if (path) {
+		image = get_rimage_from_file(wwin->screen_ptr, path, wPreferences.icon_size);
+		wfree(path);
+		if (image)
+			return image;
+	}
+
+	aicon = get_application_icon_for(wwin);
+	if (aicon)
+		return RRetainImage(aicon->file_image);
+
+	return get_default_icon_image(wwin->screen_ptr);
 }
 
 void update_icon_pixmap(WIcon *icon)
@@ -733,53 +973,6 @@ void update_icon_pixmap(WIcon *icon)
 
 	/* Paint it */
 	wIconPaint(icon);
-}
-
-static void get_rimage_icon_from_x11(WIcon *icon)
-{
-	/* Remove the icon image */
-	unset_icon_image(icon);
-
-	/* Set the new icon image */
-	icon->file_image = RRetainImage(icon->owner->net_icon_image);
-}
-
-static void get_rimage_icon_from_user_icon(WIcon *icon)
-{
-	if (icon->file_image)
-		return;
-
-	get_rimage_icon_from_default_icon(icon);
-}
-
-static void get_rimage_icon_from_default_icon(WIcon *icon)
-{
-	WScreen *scr = icon->core->screen_ptr;
-
-	/* If the icon don't have image, we should use the default image. */
-	if (!scr->def_icon_rimage)
-		scr->def_icon_rimage = get_default_image(scr);
-
-	/* Remove the icon image */
-	unset_icon_image(icon);
-
-	/* Set the new icon image */
-	icon->file_image = RRetainImage(scr->def_icon_rimage);
-}
-
-/* Get the RImage from the WIcon of the WWindow */
-static void get_rimage_icon_from_icon_win(WIcon *icon)
-{
-	RImage *image;
-
-	/* Create the new RImage */
-	image = get_window_image_from_x11(icon->icon_win);
-
-	/* Free the icon info */
-	unset_icon_image(icon);
-
-	/* Set the new info */
-	icon->file_image = image;
 }
 
 /* Set the dockapp in the WIcon */
@@ -822,26 +1015,20 @@ static void set_dockapp_in_icon(WIcon *icon)
 }
 
 /* Get the RImage from the XWindow wm_hints */
-RImage *get_rimage_icon_from_wm_hints(WIcon *icon)
+static RImage *get_window_image_from_wm_hints(WWindow *wwin)
 {
 	RImage *image = NULL;
 	unsigned int w, h, d;
-	WWindow *wwin;
-
-	if ((!icon) || (!icon->owner))
-		return NULL;
-
-	wwin = icon->owner;
 
 	if (!wwin->wm_hints)
 		return NULL;
 
 	if (!getSize(wwin->wm_hints->icon_pixmap, &w, &h, &d)) {
-		icon->owner->wm_hints->flags &= ~IconPixmapHint;
+		wwin->wm_hints->flags &= ~IconPixmapHint;
 		return NULL;
 	}
 
-	image = get_wwindow_image_from_wmhints(wwin, icon);
+	image = get_wwindow_image_from_wmhints(wwin);
 	if (!image)
 		return NULL;
 
@@ -1007,14 +1194,11 @@ static void miniwindowMouseDown(WObjDescriptor *desc, XEvent *event)
 	}
 }
 
+/* Set the icon file of the database for an icon (wIconUpdate shows it) */
 void set_icon_image_from_database(WIcon *icon, const char *wm_instance, const char *wm_class, const char *command)
 {
-	char *file = NULL;
+	if (icon->file)
+		wfree(icon->file);
 
-	file = get_icon_filename(wm_instance, wm_class, command, False);
-	if (file) {
-		icon->file = wstrdup(file);
-		icon->file_image = get_rimage_from_file(icon->core->screen_ptr, icon->file, wPreferences.icon_size);
-		wfree(file);
-	}
+	icon->file = get_icon_filename(wm_instance, wm_class, command, False);
 }

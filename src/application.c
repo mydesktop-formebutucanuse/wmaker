@@ -29,6 +29,7 @@
 #include "usermenu.h"
 #endif				/* USER_MENU */
 #include "appicon.h"
+#include "icon.h"
 #include "application.h"
 #include "appmenu.h"
 #include "properties.h"
@@ -142,6 +143,64 @@ WApplication *wApplicationCreate(WWindow * wwin)
 	create_appicon_for_application(wapp, wwin);
 
 	return wapp;
+}
+
+/*
+ * The appicon ignores the client icons when the group leader or any window
+ * of the application does. The leader is often a hidden window with a class
+ * of its own (GTK names it after the program, and Firefox based browsers
+ * call their windows "Navigator"), so the user never sets its attributes:
+ * without this, any new window of the application (a Picture-in-Picture
+ * one, for example) would bring the client icon back on the appicon.
+ */
+Bool wApplicationIgnoresClientIcons(WApplication *wapp)
+{
+	WWindow *wwin;
+
+	if (WFLAGP(wapp->main_window_desc, always_user_icon))
+		return True;
+
+	for (wwin = wapp->main_window_desc->screen_ptr->focused_window; wwin; wwin = wwin->prev)
+		if (wwin->main_window == wapp->main_window && WFLAGP(wwin, always_user_icon))
+			return True;
+
+	return False;
+}
+
+/* Choose the image of the appicon again (see wIconUpdate) */
+void wApplicationUpdateIcon(WApplication *wapp)
+{
+	if (!wapp || !wapp->app_icon)
+		return;
+
+	wIconUpdate(wapp->app_icon->icon);
+	wAppIconPaint(wapp->app_icon);
+
+	/* Let the dock remember the icon */
+	if (wapp->app_icon->docked && !WFLAGP(wapp->main_window_desc, no_appicon))
+		save_appicon(wapp->app_icon);
+}
+
+/*
+ * A window joined or left its application: update the appicon if the icon
+ * settings of the window may change it (it ignores the client icons, or
+ * the appicon shows an icon file other than the one of the leader, or no
+ * icon of its own). The window must be in the window list only if it is
+ * joining the application.
+ */
+void wApplicationUpdateIconFor(WWindow *wwin)
+{
+	WApplication *wapp = wApplicationOf(wwin->main_window);
+	WIcon *icon;
+
+	if (!wapp || !wapp->app_icon || wapp->main_window_desc == wwin)
+		return;
+
+	icon = wapp->app_icon->icon;
+	if (WFLAGP(wwin, always_user_icon) ||
+	    (!icon->client_image && !icon->image_file) ||
+	    (icon->image_file && (!icon->file || strcmp(icon->image_file, icon->file) != 0)))
+		wApplicationUpdateIcon(wapp);
 }
 
 void wApplicationDestroy(WApplication *wapp)

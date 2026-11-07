@@ -64,6 +64,48 @@ Shorter icon slides are quicker, and the menu scrolls at the speed it had
 before.
 
 
+Icons set by the user
+---------------------
+
+The appicon, the miniwindows, the switch panel and the window list now
+choose their image in the same way, in this order:
+
+  1. the icon supplied by the client (icon window, _NET_WM_ICON or
+     WM_HINTS icon pixmap), unless "Ignore client supplied icon"
+     (AlwaysUserIcon) is set;
+  2. the icon file set by the user;
+  3. the default icon.
+
+The icon file set by the user is kept while a client icon is shown, so it
+comes back as soon as the client icon is ignored. A window without an icon
+of its own shows the one of its application. Before, the switch panel and
+the window list each preferred other sources than the miniwindow.
+
+Many programs (GTK ones, Firefox based browsers) group their windows under
+a hidden window with a class of its own, for example "librewolf.librewolf"
+for windows of class "Navigator.librewolf". The appicon follows that
+hidden window, so the icon settings of the windows did not reach it: the
+appicon showed the client icon, or kept the user icon only until another
+window of the program (a Picture-in-Picture window, for example) brought
+the client icon back. The appicon now ignores the client icons as long as
+any window of the program does, and shows the icon set for the hidden
+window, or else the one set for its windows. A client icon the dock saved
+for the program before does not take precedence over the icon set by the
+user, and the dock remembers the latter for when the program is not
+running.
+
+The inspector ("Attributes...") now applies the icon settings to windows
+that belong to no application too.
+
+Windows that tell of no application (no group leader, no client leader,
+and not transient), like those of kitty and other GLFW programs, had no
+appicon at all, so the icon set for them could not be seen. They now get
+one, shared by the windows of the same class, when an icon is set for
+their class. The new AppIconForUngroupedWindows option changes this:
+"IfIconSet" (the default), "Always" or "Never". It applies to the windows
+mapped after the change; EmulateAppIcon still does it for a single class.
+
+
 Border around undecorated windows
 ---------------------------------
 

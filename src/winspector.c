@@ -695,6 +695,7 @@ static void applySettings(WMWidget *button, void *client_data)
 	WWindow *wwin = panel->inspected;
 	WApplication *wapp = wApplicationOf(wwin->main_window);
 	int old_skip_window_list, old_omnipresent, old_no_bind_keys, old_no_bind_mouse;
+	char *file;
 	int i;
 
 	old_skip_window_list = WFLAGP(wwin, skip_window_list);
@@ -782,70 +783,50 @@ static void applySettings(WMWidget *button, void *client_data)
 			unpaint_app_icon(wapp);
 		else
 			paint_app_icon(wapp);
-
-		char *file = WMGetTextFieldText(panel->fileText);
-		if (file[0] == 0) {
-			wfree(file);
-			file = NULL;
-		}
-
-		/* If always_user_icon flag is set, but the user icon is not set
-		 * we use client supplied icon and we unset the flag */
-		if ((WFLAGP(wwin, always_user_icon) && (!file))) {
-			/* Show the warning */
-			char *buf;
-			int len = 100;
-
-			buf = wmalloc(len);
-			snprintf(buf, len, _("Ignore client supplied icon is set, but icon filename textbox is empty. Using client supplied icon"));
-			wMessageDialog(panel->frame->screen_ptr, _("Warning"), buf, _("OK"), NULL, NULL);
-			wfree(buf);
-			wfree(file);
-
-			/* Change the flags */
-			WSETUFLAG(wwin, always_user_icon, 0);
-			WMSetButtonSelected(panel->alwChk, 0);
-		}
-
-		/* After test the always_user_icon flag value before,
-		 * the "else" block is used only if the flag is set and
-		 * the icon text box has an icon path */
-		if (!WFLAGP(wwin, always_user_icon)) {
-			/* Change App Icon image, using the icon provided by the client */
-			if (wapp->app_icon) {
-				RImage *image = get_rimage_icon_from_wm_hints(wapp->app_icon->icon);
-				if (image) {
-					set_icon_image_from_image(wapp->app_icon->icon, image);
-					update_icon_pixmap(wapp->app_icon->icon);
-				} else {
-					wIconUpdate(wapp->app_icon->icon);
-				}
-			}
-
-			/* Change icon image if the app is minimized,
-			 * using the icon provided by the client */
-			if (wwin->icon) {
-				RImage *image = get_rimage_icon_from_wm_hints(wwin->icon);
-				if (image) {
-					set_icon_image_from_image(wwin->icon, image);
-					update_icon_pixmap(wwin->icon);
-				} else {
-					wIconUpdate(wwin->icon);
-				}
-			}
-		} else {
-			/* Change App Icon image */
-			if (wapp->app_icon)
-				wIconChangeImageFile(wapp->app_icon->icon, file);
-
-			/* Change icon image if the app is minimized */
-			if (wwin->icon)
-				wIconChangeImageFile(wwin->icon, file);
-		}
-
-		if (file)
-			wfree(file);
 	}
+
+	/* The icon, for windows with no application too */
+	file = WMGetTextFieldText(panel->fileText);
+	if (file[0] == 0) {
+		wfree(file);
+		file = NULL;
+	}
+
+	/* If always_user_icon flag is set, but the user icon is not set
+	 * we use client supplied icon and we unset the flag */
+	if ((WFLAGP(wwin, always_user_icon) && (!file))) {
+		/* Show the warning */
+		char *buf;
+		int len = 100;
+
+		buf = wmalloc(len);
+		snprintf(buf, len, _("Ignore client supplied icon is set, but icon filename textbox is empty. Using client supplied icon"));
+		wMessageDialog(panel->frame->screen_ptr, _("Warning"), buf, _("OK"), NULL, NULL);
+		wfree(buf);
+
+		/* Change the flags */
+		WSETUFLAG(wwin, always_user_icon, 0);
+		WMSetButtonSelected(panel->alwChk, 0);
+	}
+
+	if (file) {
+		/* The icon file of the window: its miniwindow shows it unless
+		 * the client supplies an icon and it is not ignored */
+		if (wwin->icon)
+			wIconChangeImageFile(wwin->icon, file);
+
+		/* The appicon shows it too when the window ignores the client
+		 * icons (the group leader may be a window of another class) */
+		if (WFLAGP(wwin, always_user_icon) && wapp && wapp->app_icon)
+			wIconChangeImageFile(wapp->app_icon->icon, file);
+
+		wfree(file);
+	}
+
+	/* The image may change with "Ignore client supplied icon" alone */
+	if (wwin->icon)
+		wIconUpdate(wwin->icon);
+	wApplicationUpdateIcon(wapp);
 
 	wNETFrameExtents(wwin);
 }
