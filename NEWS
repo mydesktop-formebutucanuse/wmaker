@@ -78,8 +78,10 @@ choose their image in the same way, in this order:
 
 The icon file set by the user is kept while a client icon is shown, so it
 comes back as soon as the client icon is ignored. A window without an icon
-of its own shows the one of its application. Before, the switch panel and
-the window list each preferred other sources than the miniwindow.
+of its own shows the one of its application if it has the class of the
+application; windows of other programs that SharedAppIcon put in the
+application show the default icon. Before, the switch panel and the
+window list each preferred other sources than the miniwindow.
 
 Many programs (GTK ones, Firefox based browsers) group their windows under
 a hidden window with a class of its own, for example "librewolf.librewolf"

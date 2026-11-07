@@ -732,7 +732,8 @@ void set_icon_minipreview(WIcon *icon, RImage *image)
  * its windows does: the leader is often a hidden window with a class of its
  * own the user never sets anything for. Its icon file is the one of the
  * leader (or of the dock), else the one of its windows. A window without an
- * icon of its own shows the icon of its application.
+ * icon of its own shows the icon of its application, if it has the class of
+ * the application.
  */
 
 /* The application the icon is the appicon of (if it is running) */
@@ -901,16 +902,24 @@ static void update_application_icon(WIcon *icon, WApplication *wapp)
 
 /*
  * The appicon of the application of a window, if a window without an icon
- * of its own can show it: when the window ignores the client icons, only an
+ * of its own can show it. The window must be of the class of the application:
+ * an application may hold the windows of other programs (SharedAppIcon puts
+ * together the windows whose group leaders have the same class), and those
+ * show the default icon. When the window ignores the client icons, only an
  * icon file is fine.
  */
 static WIcon *get_application_icon_for(WWindow *wwin)
 {
 	WApplication *wapp;
 	WIcon *aicon;
+	char *app_class;
 
 	wapp = wApplicationOf(wwin->main_window);
 	if (!wapp || !wapp->app_icon)
+		return NULL;
+
+	app_class = wapp->main_window_desc->wm_class;
+	if (!wwin->wm_class || !app_class || strcmp(wwin->wm_class, app_class) != 0)
 		return NULL;
 
 	aicon = wapp->app_icon->icon;
