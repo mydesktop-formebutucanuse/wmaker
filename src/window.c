@@ -1990,6 +1990,12 @@ void wWindowUpdateName(WWindow *wwin, const char *newTitle)
 
 	if (wFrameWindowChangeTitle(wwin->frame, title))
 		WMPostNotificationName(WMNChangedName, wwin, NULL);
+
+	/* The miniwindow shows the name when the window has no icon name */
+	if (wwin->icon) {
+		wIconChangeTitle(wwin->icon, wwin);
+		wIconPaint(wwin->icon);
+	}
 }
 
 /*

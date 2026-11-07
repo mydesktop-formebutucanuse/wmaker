@@ -343,29 +343,45 @@ static void icon_update_pixmap(WIcon *icon, RImage *image)
 	icon->pixmap = pixmap;
 }
 
+/* The name, or NULL if it is empty */
+static char *non_empty_name(char *name)
+{
+	if (name && name[0] == '\0') {
+		XFree(name);
+		return NULL;
+	}
+
+	return name;
+}
+
+/*
+ * The title of a miniwindow is the icon name of its window, else the name of
+ * the window, as its titlebar shows it: a client may set each of them through
+ * the EWMH property only, or through the ICCCM one only.
+ */
 void wIconChangeTitle(WIcon *icon, WWindow *wwin)
 {
+	Window win;
+	char *name;
+
 	if (!icon || !wwin)
 		return;
+
+	win = wwin->client_win;
 
 	/* Remove the previous icon title */
 	if (icon->icon_name != NULL)
 		XFree(icon->icon_name);
 
-	/* Set the new one, using two methods to identify
-	the icon name or switch back to window name */
-	icon->icon_name = wNETWMGetIconName(wwin->client_win);
-	if (icon->icon_name) {
-		/* treat empty string as unset */
-		if (icon->icon_name[0] == '\0') {
-			XFree(icon->icon_name);
-			icon->icon_name = NULL;
-		}
-	}
+	name = non_empty_name(wNETWMGetIconName(win));
+	if (!name && wGetIconName(dpy, win, &name))
+		name = non_empty_name(name);
+	if (!name)
+		name = non_empty_name(wNETWMGetWindowName(win));
+	if (!name && wFetchName(dpy, win, &name))
+		name = non_empty_name(name);
 
-	if (!icon->icon_name)
-		if (!wGetIconName(dpy, wwin->client_win, &icon->icon_name))
-			icon->icon_name = wNETWMGetWindowName(wwin->client_win);
+	icon->icon_name = name;
 }
 
 RImage *wIconValidateIconSize(RImage *icon, int max_size)
@@ -716,7 +732,8 @@ void set_icon_minipreview(WIcon *icon, RImage *image)
  * its windows does: the leader is often a hidden window with a class of its
  * own the user never sets anything for. Its icon file is the one of the
  * leader (or of the dock), else the one of its windows. A window without an
- * icon of its own shows the icon of its application.
+ * icon of its own shows the icon of its application, if it has the class of
+ * the application.
  */
 
 /* The application the icon is the appicon of (if it is running) */
@@ -835,11 +852,40 @@ static char *get_application_icon_file(WIcon *icon, WApplication *wapp)
 	return path;
 }
 
+/*
+ * The client icon of an application: the one of its leader, else the one of
+ * its most recently focused window having one. The leader takes the client
+ * icon of the window that started the application, but only if that window
+ * set it before being mapped (kitty sets it later), and a hidden leader has
+ * none of its own.
+ */
+static Bool set_application_image_from_client(WIcon *icon, WApplication *wapp)
+{
+	WWindow *wwin;
+	RImage *image;
+
+	if (set_icon_image_from_client(icon, icon->owner))
+		return True;
+
+	for (wwin = wapp->main_window_desc->screen_ptr->focused_window; wwin; wwin = wwin->prev) {
+		if (wwin->main_window != wapp->main_window)
+			continue;
+
+		image = get_window_client_image(wwin);
+		if (image) {
+			set_icon_image(icon, image, NULL, True);
+			return True;
+		}
+	}
+
+	return False;
+}
+
 static void update_application_icon(WIcon *icon, WApplication *wapp)
 {
 	char *path;
 
-	if (!wApplicationIgnoresClientIcons(wapp) && set_icon_image_from_client(icon, icon->owner))
+	if (!wApplicationIgnoresClientIcons(wapp) && set_application_image_from_client(icon, wapp))
 		return;
 
 	path = get_application_icon_file(icon, wapp);
@@ -856,16 +902,24 @@ static void update_application_icon(WIcon *icon, WApplication *wapp)
 
 /*
  * The appicon of the application of a window, if a window without an icon
- * of its own can show it: when the window ignores the client icons, only an
+ * of its own can show it. The window must be of the class of the application:
+ * an application may hold the windows of other programs (SharedAppIcon puts
+ * together the windows whose group leaders have the same class), and those
+ * show the default icon. When the window ignores the client icons, only an
  * icon file is fine.
  */
 static WIcon *get_application_icon_for(WWindow *wwin)
 {
 	WApplication *wapp;
 	WIcon *aicon;
+	char *app_class;
 
 	wapp = wApplicationOf(wwin->main_window);
 	if (!wapp || !wapp->app_icon)
+		return NULL;
+
+	app_class = wapp->main_window_desc->wm_class;
+	if (!wwin->wm_class || !app_class || strcmp(wwin->wm_class, app_class) != 0)
 		return NULL;
 
 	aicon = wapp->app_icon->icon;

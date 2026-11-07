@@ -78,8 +78,10 @@ choose their image in the same way, in this order:
 
 The icon file set by the user is kept while a client icon is shown, so it
 comes back as soon as the client icon is ignored. A window without an icon
-of its own shows the one of its application. Before, the switch panel and
-the window list each preferred other sources than the miniwindow.
+of its own shows the one of its application if it has the class of the
+application; windows of other programs that SharedAppIcon put in the
+application show the default icon. Before, the switch panel and the
+window list each preferred other sources than the miniwindow.
 
 Many programs (GTK ones, Firefox based browsers) group their windows under
 a hidden window with a class of its own, for example "librewolf.librewolf"
@@ -105,6 +107,29 @@ their class. The new AppIconForUngroupedWindows option changes this:
 "IfIconSet" (the default), "Always" or "Never". It applies to the windows
 mapped after the change; EmulateAppIcon still does it for a single class.
 
+
+Miniwindow titles
+-----------------
+
+A miniwindow showed no title for a window that sets its name only through
+the old WM_NAME property and no icon name, and its title did not follow a
+change of the window name while the window was miniaturized. It now shows
+the icon name of the window, else its name as the titlebar does, and
+follows both.
+
+
+Empty names in WM_CLASS
+-----------------------
+
+Some programs set the instance or the class in their WM_CLASS property to
+an empty string. The inspector showed an unnamed choice for it in the
+Window Specification panel, and the settings saved with that choice were
+stored under the empty name, so they applied to every window with an empty
+instance or class, whatever its program. The inspector no longer offers
+that choice, and settings stored under the empty name, or under "." (both
+parts empty), in WMWindowAttributes are ignored; such an entry can be
+deleted from the file. Settings stored for "instance.class" with one empty
+part (for example ".Foo") still apply to the windows of that program.
 
 Border around undecorated windows
 ---------------------------------
