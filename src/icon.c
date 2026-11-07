@@ -851,11 +851,40 @@ static char *get_application_icon_file(WIcon *icon, WApplication *wapp)
 	return path;
 }
 
+/*
+ * The client icon of an application: the one of its leader, else the one of
+ * its most recently focused window having one. The leader takes the client
+ * icon of the window that started the application, but only if that window
+ * set it before being mapped (kitty sets it later), and a hidden leader has
+ * none of its own.
+ */
+static Bool set_application_image_from_client(WIcon *icon, WApplication *wapp)
+{
+	WWindow *wwin;
+	RImage *image;
+
+	if (set_icon_image_from_client(icon, icon->owner))
+		return True;
+
+	for (wwin = wapp->main_window_desc->screen_ptr->focused_window; wwin; wwin = wwin->prev) {
+		if (wwin->main_window != wapp->main_window)
+			continue;
+
+		image = get_window_client_image(wwin);
+		if (image) {
+			set_icon_image(icon, image, NULL, True);
+			return True;
+		}
+	}
+
+	return False;
+}
+
 static void update_application_icon(WIcon *icon, WApplication *wapp)
 {
 	char *path;
 
-	if (!wApplicationIgnoresClientIcons(wapp) && set_icon_image_from_client(icon, icon->owner))
+	if (!wApplicationIgnoresClientIcons(wapp) && set_application_image_from_client(icon, wapp))
 		return;
 
 	path = get_application_icon_file(icon, wapp);
