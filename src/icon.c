@@ -343,29 +343,45 @@ static void icon_update_pixmap(WIcon *icon, RImage *image)
 	icon->pixmap = pixmap;
 }
 
+/* The name, or NULL if it is empty */
+static char *non_empty_name(char *name)
+{
+	if (name && name[0] == '\0') {
+		XFree(name);
+		return NULL;
+	}
+
+	return name;
+}
+
+/*
+ * The title of a miniwindow is the icon name of its window, else the name of
+ * the window, as its titlebar shows it: a client may set each of them through
+ * the EWMH property only, or through the ICCCM one only.
+ */
 void wIconChangeTitle(WIcon *icon, WWindow *wwin)
 {
+	Window win;
+	char *name;
+
 	if (!icon || !wwin)
 		return;
+
+	win = wwin->client_win;
 
 	/* Remove the previous icon title */
 	if (icon->icon_name != NULL)
 		XFree(icon->icon_name);
 
-	/* Set the new one, using two methods to identify
-	the icon name or switch back to window name */
-	icon->icon_name = wNETWMGetIconName(wwin->client_win);
-	if (icon->icon_name) {
-		/* treat empty string as unset */
-		if (icon->icon_name[0] == '\0') {
-			XFree(icon->icon_name);
-			icon->icon_name = NULL;
-		}
-	}
+	name = non_empty_name(wNETWMGetIconName(win));
+	if (!name && wGetIconName(dpy, win, &name))
+		name = non_empty_name(name);
+	if (!name)
+		name = non_empty_name(wNETWMGetWindowName(win));
+	if (!name && wFetchName(dpy, win, &name))
+		name = non_empty_name(name);
 
-	if (!icon->icon_name)
-		if (!wGetIconName(dpy, wwin->client_win, &icon->icon_name))
-			icon->icon_name = wNETWMGetWindowName(wwin->client_win);
+	icon->icon_name = name;
 }
 
 RImage *wIconValidateIconSize(RImage *icon, int max_size)

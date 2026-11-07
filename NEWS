@@ -106,6 +106,15 @@ their class. The new AppIconForUngroupedWindows option changes this:
 mapped after the change; EmulateAppIcon still does it for a single class.
 
 
+Miniwindow titles
+-----------------
+
+A miniwindow showed no title for a window that sets its name only through
+the old WM_NAME property and no icon name, and its title did not follow a
+change of the window name while the window was miniaturized. It now shows
+the icon name of the window, else its name as the titlebar does, and
+follows both.
+
 Border around undecorated windows
 ---------------------------------
 
