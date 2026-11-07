@@ -214,7 +214,8 @@ void wDefaultFillAttributes(const char *instance, const char *class,
 	if (!ANoTitlebar)
 		init_wdefaults();
 
-	if (class && instance) {
+	/* "." (both parts empty) names no program either */
+	if (class && instance && (instance[0] != '\0' || class[0] != '\0')) {
 		buffer = StrConcatDot(instance, class);
 		dw = get_value_from_instanceclass(buffer);
 		wfree(buffer);
@@ -328,8 +329,8 @@ static WMPropList *get_generic_value(const char *instance, const char *class,
 
 	WMPLSetCaseSensitive(True);
 
-	/* Search the icon name using class and instance */
-	if (class && instance) {
+	/* Search the icon name using class and instance, unless both are empty */
+	if (class && instance && (instance[0] != '\0' || class[0] != '\0')) {
 		char *buffer;
 
 		buffer = wmalloc(strlen(class) + strlen(instance) + 2);
