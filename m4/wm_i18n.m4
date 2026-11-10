@@ -71,7 +71,6 @@ AS_IF([test "x$LINGUAS" != "x"],
      wmaker_locales=" m4_esyscmd([ls po/ | sed -n '/po$/{s,.po,,;p;}' | tr '\n' ' '])"
      wprefs_locales=" m4_esyscmd([ls WPrefs.app/po/ | sed -n '/po$/{s,.po,,;p;}' | tr '\n' ' '])"
      util_locales=" m4_esyscmd([ls util/po/ | sed -n '/po$/{s,.po,,;p;}' | tr '\n' ' '])"
-     man_locales=" m4_esyscmd([ls doc/ | grep '^[a-z][a-z]\(_[A-Z][A-Z]\)*$' | tr '\n' ' '])"
 
      # If the LINGUAS is specified as a simple '*', then we enable all the languages
      # we know. This is not standard, but it is useful is some cases
@@ -82,7 +81,7 @@ AS_IF([test "x$LINGUAS" != "x"],
      for lang in $LINGUAS; do
          found=0
          wm_missing=""
-         m4_foreach([REGION], [WRaster, WINGs, wmaker, WPrefs, util, man],
+         m4_foreach([REGION], [WRaster, WINGs, wmaker, WPrefs, util],
              [AS_IF([echo "$[]m4_tolower(REGION)[]_locales" | grep " $lang " > /dev/null],
                  [m4_toupper(REGION)MOFILES="$[]m4_toupper(REGION)MOFILES $lang.mo"
                   found=1],
@@ -98,10 +97,6 @@ AS_IF([test "x$LINGUAS" != "x"],
                   [AC_MSG_WARN([locale $lang is not supported in $wm_missing])]) ],
              [AC_MSG_WARN([locale $lang is not supported at all, ignoring])])
      done
-     #
-     # Post-processing the names for the man pages because we are not expecting
-     # a "po" file but a directory name in this case
-     MANLANGDIRS="`echo $MANMOFILES | sed -e 's,\.mo,,g' `"
 ],
 [INTLIBS=""
  WRASTERMOFILES=""
@@ -109,7 +104,6 @@ AS_IF([test "x$LINGUAS" != "x"],
  WMAKERMOFILES=""
  WPREFSMOFILES=""
  UTILMOFILES=""
- MANLANGDIRS=""
  supported_locales=" disabled"])
 dnl
 dnl The variables that are used in the Makefiles:
@@ -119,7 +113,6 @@ AC_SUBST([WINGSMOFILES])dnl
 AC_SUBST([WMAKERMOFILES])dnl
 AC_SUBST([WPREFSMOFILES])dnl
 AC_SUBST([UTILMOFILES])dnl
-AC_SUBST([MANLANGDIRS])dnl
 ])
 
 

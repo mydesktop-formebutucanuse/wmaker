@@ -4,11 +4,7 @@ CATALOGS = @WMAKERMOFILES@
 
 CLEANFILES = $(CATALOGS) $(DOMAIN).pot
 
-# Please keep this sorted in alphabetic order!
-EXTRA_DIST = be.po bg.po bs.po ca.po cs.po da.po de.po el.po es.po et.po \
-	fi.po fr.po fy.po gl.po hr.po hu.po hy.po it.po ja.po ko.po ms.po nl.po \
-	no.po pl.po pt.po pt_BR.po ro.po ru.po sk.po sr.po sv.po tr.po uk.po zh_CN.po \
-	zh_TW.po
+EXTRA_DIST = ko.po
 
 POTFILES  = \
 	$(top_srcdir)/src/actions.c \

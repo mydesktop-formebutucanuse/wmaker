@@ -4,8 +4,6 @@ CATALOGS = @UTILMOFILES@
 
 CLEANFILES = $(DOMAIN).pot $(CATALOGS)
 
-EXTRA_DIST = de.po es.po fr.po fy.po nl.po pt.po sr.po
-
 POTFILES  = \
 	$(top_srcdir)/util/wmgenmenu.c \
 	$(top_srcdir)/util/wmgenmenu.h

@@ -4,8 +4,6 @@ CATALOGS = @WINGSMOFILES@
 
 CLEANFILES = $(CATALOGS) $(DOMAIN).pot
 
-EXTRA_DIST = bg.po ca.po cs.po de.po fr.po fy.po hu.po nl.po sk.po sr.po
-
 # WUtil files:
 POTFILES  = \
 	$(top_srcdir)/WINGs/array.c \

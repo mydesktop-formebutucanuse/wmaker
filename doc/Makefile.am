@@ -1,7 +1,6 @@
 ## Process this file with automake to produce Makefile.in
 
-SUBDIRS = build @MANLANGDIRS@
-DIST_SUBDIRS = build cs ru sk
+SUBDIRS = build
 
 dist_man_MANS = \
 	geticonset.1 \

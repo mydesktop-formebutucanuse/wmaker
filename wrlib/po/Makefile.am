@@ -4,8 +4,6 @@ CATALOGS = @WRASTERMOFILES@
 
 CLEANFILES = $(CATALOGS) $(DOMAIN).pot
 
-EXTRA_DIST = fr.po sr.po
-
 POTFILES  = \
 	$(top_srcdir)/wrlib/raster.c	\
 	$(top_srcdir)/wrlib/alpha_combine.c	\

@@ -108,6 +108,16 @@ their class. The new AppIconForUngroupedWindows option changes this:
 mapped after the change; EmulateAppIcon still does it for a single class.
 
 
+English and Korean only
+-----------------------
+
+The translations of the messages (po files), of the menus (menu.xx,
+plmenu.xx, appearance.menu.xx, background.menu.xx) and of the manual pages
+(doc/cs, doc/ru, doc/sk) were removed, except for Korean: "ko" is the only
+language that LINGUAS can still select, and menu.ko and plmenu.ko are the
+only localized menus that are installed. Everything else is in English.
+
+
 Icon of the active application looks pushed in
 ----------------------------------------------
 
