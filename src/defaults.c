@@ -2861,6 +2861,32 @@ static int setStickyIcons(WScreen * scr, WDefaultEntry * entry, void *bar, void 
 	return 0;
 }
 
+/*
+ * The icon tile pushed in, for the appicon of the active application: the
+ * bevel of the regular tile as seen from the opposite corner, so that the
+ * shadow is at the top left and the light at the bottom right. The texture
+ * itself is not turned around.
+ */
+static RImage *makePressedIconTile(WTexture *texture)
+{
+	RImage *flat, *turned, *pressed;
+
+	flat = wTextureRenderImage(texture, wPreferences.icon_size, wPreferences.icon_size, WREL_FLAT);
+	if (!flat)
+		return NULL;
+
+	turned = RRotateImage(flat, 180.0F);
+	RReleaseImage(flat);
+	if (!turned)
+		return NULL;
+
+	RBevelImageScaled(turned, RBEV_RAISED3, WMScaled(1));
+	pressed = RRotateImage(turned, 180.0F);
+	RReleaseImage(turned);
+
+	return pressed;
+}
+
 static int setIconTile(WScreen * scr, WDefaultEntry * entry, void *tdata, void *foo)
 {
 	Pixmap pixmap;
@@ -2889,6 +2915,11 @@ static int setIconTile(WScreen * scr, WDefaultEntry * entry, void *tdata, void *
 	}
 
 	scr->icon_tile = img;
+
+	if (scr->icon_tile_pressed)
+		RReleaseImage(scr->icon_tile_pressed);
+	scr->icon_tile_pressed = ((*texture)->any.type & WREL_BORDER_MASK)
+		? makePressedIconTile(*texture) : NULL;
 
 	/* put the icon in the noticeboard hint */
 	PropSetIconTileHint(scr, img);

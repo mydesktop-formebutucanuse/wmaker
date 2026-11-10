@@ -278,7 +278,10 @@ static void icon_update_pixmap(WIcon *icon, RImage *image)
 
 	switch (icon->tile_type) {
 	case TILE_NORMAL:
-		tile = RCloneImage(scr->icon_tile);
+		if (icon->highlighted && scr->icon_tile_pressed)
+			tile = RCloneImage(scr->icon_tile_pressed);
+		else
+			tile = RCloneImage(scr->icon_tile);
 		break;
 	case TILE_CLIP:
 		tile = RCloneImage(scr->clip_tile);
@@ -326,8 +329,9 @@ static void icon_update_pixmap(WIcon *icon, RImage *image)
 	if (icon->highlighted) {
 		RColor color;
 
+		/* pushed in (see the tile above), so a little in the shade: 7/8 of the brightness */
 		color.red = color.green = color.blue = 0;
-		color.alpha = 160;
+		color.alpha = 112;
 		RLightImage(tile, &color);
 	}
 
