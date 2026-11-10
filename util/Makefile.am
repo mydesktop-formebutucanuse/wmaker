@@ -5,6 +5,10 @@ pkgdatadir  = $(datadir)/@PACKAGE@
 bin_PROGRAMS = wxcopy wxpaste wdwrite wdread getstyle setstyle convertfonts \
 	seticons geticonset wmsetbg wmagnify wmgenmenu wmmenugen wmiv
 
+if USE_XCOMPOSITE
+bin_PROGRAMS += wmnotch
+endif
+
 bin_SCRIPTS = wmaker.inst wm-oldmenu2new wkdemenu.pl
 
 EXTRA_DIST = wmaker.inst.in bughint wm-oldmenu2new wkdemenu.pl
@@ -53,6 +57,8 @@ wmsetbg_LDADD = \
 	$(top_builddir)/WINGs/libWUtil.la \
 	$(top_builddir)/wrlib/libwraster.la \
 	@XLFLAGS@ @LIBXINERAMA@ @XLIBS@
+
+wmnotch_LDADD = @XLFLAGS@ @LIBXCOMPOSITE@ @XLIBS@
 
 wmgenmenu_LDADD = \
 	$(top_builddir)/WINGs/libWUtil.la
