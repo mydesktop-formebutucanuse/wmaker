@@ -234,6 +234,49 @@ AC_SUBST([LIBXRANDR])dnl
 ]) dnl AC_DEFUN
 
 
+# WM_XEXT_CHECK_XCOMPOSITE
+# ------------------------
+#
+# Check for the X Composite extension, and for the Damage, XFixes and Render
+# extensions that go with it: wmnotch draws the shade of the camera notch
+# over the windows with them
+# The check depends on variable 'enable_notch' being either:
+#   yes  - detect, fail if not found
+#   no   - do not detect, disable support
+#   auto - detect, disable if not found
+#
+# When found, append appropriate stuff in LIBXCOMPOSITE, and append info to
+# the variable 'supported_xext'
+# When not found, append info to variable 'unsupported'
+AC_DEFUN_ONCE([WM_XEXT_CHECK_XCOMPOSITE],
+[WM_LIB_CHECK([Composite], [-lXcomposite], [XCompositeGetOverlayWindow],
+    [-lXdamage -lXfixes -lXrender -lXext $XLIBS],
+    [wm_save_CFLAGS="$CFLAGS"
+     AC_COMPILE_IFELSE([AC_LANG_PROGRAM([dnl
+@%:@include <X11/Xlib.h>
+@%:@include <X11/extensions/shape.h>
+@%:@include <X11/extensions/Xcomposite.h>
+@%:@include <X11/extensions/Xdamage.h>
+@%:@include <X11/extensions/Xfixes.h>
+@%:@include <X11/extensions/Xrender.h>
+], [dnl
+  Display *dpy = NULL;
+  Window win = XCompositeGetOverlayWindow(dpy, None);
+
+  XDamageCreate(dpy, win, XDamageReportDeltaRectangles);
+  XFixesCreateRegionFromWindow(dpy, win, WindowRegionBounding);
+  XRenderFindStandardFormat(dpy, PictStandardARGB32);
+  XShapeSelectInput(dpy, win, ShapeNotifyMask);])],
+        [],
+        [AC_MSG_ERROR([found $CACHEVAR but cannot compile using the headers of the Composite, Damage, XFixes and Render extensions])])
+     CFLAGS="$wm_save_CFLAGS"],
+    [supported_xext], [LIBXCOMPOSITE], [enable_notch], [USE_XCOMPOSITE])dnl
+AS_IF([test "x$enable_notch" != "xno"],
+    [LIBXCOMPOSITE="$LIBXCOMPOSITE -lXdamage -lXfixes -lXrender -lXext"])
+AC_SUBST([LIBXCOMPOSITE])dnl
+]) dnl AC_DEFUN
+
+
 # WM_XEXT_CHECK_XKBFILE
 # ---------------------
 #

@@ -656,6 +656,20 @@ m4_divert_pop([INIT_PREPARE])dnl
 WM_XEXT_CHECK_XRANDR
 
 
+dnl Shade of the camera notch
+dnl =========================
+dnl wmnotch draws it over the windows with the Composite extension
+m4_divert_push([INIT_PREPARE])dnl
+AC_ARG_ENABLE([notch],
+    [AS_HELP_STRING([--disable-notch], [do not build wmnotch, which shades the camera notch of the screen @<:@default=auto@:>@])],
+    [AS_CASE(["$enableval"],
+        [yes|no], [],
+        [AC_MSG_ERROR([bad value $enableval for --enable-notch]) ]) ],
+    [enable_notch=auto])
+m4_divert_pop([INIT_PREPARE])dnl
+WM_XEXT_CHECK_XCOMPOSITE
+
+
 dnl Math library
 dnl ============
 dnl libWINGS uses math functions, check whether usage requires linking

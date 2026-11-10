@@ -18,6 +18,10 @@ dist_man_MANS = \
 	wxcopy.1 \
 	wxpaste.1
 
+if USE_XCOMPOSITE
+dist_man_MANS += wmnotch.1
+endif
+
 man_MANS = \
 	wmaker.1 \
 	wmsetbg.1
@@ -55,8 +59,13 @@ am__v_CHKOPTS_  = $(am__v_CHKOPTS_$(AM_DEFAULT_VERBOSITY))
 am__v_CHKOPTS_0 = @echo "  CHK      $@" ;
 am__v_CHKOPTS_1 =
 
+if USE_XCOMPOSITE
+CHECK_WMNOTCH_ARGS = wmnotch-args
+endif
+
 check-local: wmaker-args WPrefs-args wmagnify-args geticonset-args getstyle-args seticons-args setstyle-args \
-	wdread-args wdwrite-args wmgenmenu-args wmiv-args wmmenugen-args wmsetbg-args wxcopy-args wxpaste-args
+	wdread-args wdwrite-args wmgenmenu-args wmiv-args wmmenugen-args wmsetbg-args wxcopy-args wxpaste-args \
+	$(CHECK_WMNOTCH_ARGS)
 
 wmaker-args:
 	$(AM_V_CHKOPTS)$(top_srcdir)/script/check-cmdline-options-doc.sh \
@@ -110,6 +119,10 @@ wmsetbg-args:
 	$(AM_V_CHKOPTS)$(top_srcdir)/script/check-cmdline-options-doc.sh \
 		--program "$(top_builddir)/util/wmsetbg" --man-page "wmsetbg.1"
 
+wmnotch-args:
+	$(AM_V_CHKOPTS)$(top_srcdir)/script/check-cmdline-options-doc.sh \
+		--program "$(top_builddir)/util/wmnotch" --man-page "$(top_srcdir)/doc/wmnotch.1"
+
 wxcopy-args:
 	$(AM_V_CHKOPTS)$(top_srcdir)/script/check-cmdline-options-doc.sh \
 		--program "$(top_builddir)/util/wxcopy" --man-page "$(top_srcdir)/doc/wxcopy.1"
@@ -119,7 +132,8 @@ wxpaste-args:
 		--program "$(top_builddir)/util/wxpaste" --man-page "$(top_srcdir)/doc/wxpaste.1"
 
 .PHONY: wmaker-args WPrefs-args wmagnify-args geticonset-args getstyle-args seticons-args setstyle-args \
-	wdread-args wdwrite-args wmgenmenu-args wmiv-args wmmenugen-args wmsetbg-args wxcopy-args wxpaste-args
+	wdread-args wdwrite-args wmgenmenu-args wmiv-args wmmenugen-args wmsetbg-args wxcopy-args wxpaste-args \
+	$(CHECK_WMNOTCH_ARGS)
 
 
 ################################################################################

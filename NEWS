@@ -3,6 +3,41 @@ NEWS for veteran Window Maker users
 
 -- 0.97.0
 
+Camera notch of the screen
+--------------------------
+
+On a laptop panel that has a camera notch, the strip of the screen at the
+height of the notch is now handled by Window Maker itself:
+
+  - the strip is shaded with a gradient that is black at the edge of the
+    screen and fades away a little below the strip. The shade lies over
+    everything, and the windows, the dock and the clip stay visible below it;
+  - maximized windows and the windows that are placed automatically stay
+    below the strip, and _NET_WORKAREA does not include it;
+  - fullscreen windows start below the strip, which is plain black while one
+    is shown.
+
+The notch is found from the size of the head: such a panel is higher than
+16:10 by the height of the notch. Two options of the WindowMaker domain can
+change this:
+
+  NotchHeight = Auto;   height of the strip in pixels of the screen, Auto to
+                        find it (default), 0 to have no strip
+  NotchFade = Auto;     count of rows below the strip where the shade ends,
+                        Auto for 3/4 of the height of the strip (default)
+
+The shade is drawn by a new helper, "wmnotch", which Window Maker starts and
+stops by itself. It blends the shade with the windows below it by means of
+the Composite, Damage, XFixes and Render extensions, without a compositing
+manager: only the windows that reach the top rows of the screen are
+redirected. The libraries of these extensions are needed to build it; with
+"./configure --disable-notch", or without them, the strip is still kept free
+but it is not shaded.
+
+This replaces the separate "notchbar" program, which must not be started
+anymore. There is no clock nor battery level in the strip.
+
+
 GUI scale factor (GSScaleFactor)
 --------------------------------
 

@@ -324,6 +324,20 @@ typedef struct _WScreen {
     int helper_fd;
     pid_t helper_pid;
 
+    struct {			       /* camera notch of the screen, see notch.c */
+        int head;		       /* head that has the notch, -1 if none */
+        WMRect strip;		       /* strip of the screen at its height */
+        int fade;		       /* rows below the strip where the shade ends */
+        long data[6];	       /* what the helper was told */
+        int helper_fd;	       /* pipe that keeps the helper running */
+        pid_t helper_pid;
+        unsigned int initialized:1;
+        unsigned int covered:1;	       /* a fullscreen window is shown on the head */
+        unsigned int published:1;      /* the property is set on the root window */
+        unsigned int check_pending:1;  /* the fullscreen windows are to be looked at */
+        unsigned int helper_failed:1;  /* the helper is not to be started again */
+    } notch;
+
     struct {
         unsigned int startup:1;	       /* during window manager startup */
         unsigned int regenerate_icon_textures:1;

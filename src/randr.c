@@ -31,6 +31,7 @@
 #include "framewin.h"
 #include "xinerama.h"
 #include "wmspec.h"
+#include "notch.h"
 #include "dock.h"
 #include "workspace.h"
 #include "actions.h"
@@ -560,6 +561,7 @@ static void wRandR_Update(WScreen *scr)
     }
 
     /* Refresh usable areas and EWMH hints */
+    wNotchUpdate(scr);
     wScreenUpdateUsableArea(scr);
     wNETWMUpdateWorkarea(scr);
 

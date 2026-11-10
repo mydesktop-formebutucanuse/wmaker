@@ -34,6 +34,7 @@
 #include "session.h"
 #include "winspector.h"
 #include "wmspec.h"
+#include "notch.h"
 #include "colormap.h"
 #include "screen.h"
 #include "shutdown.h"
@@ -176,6 +177,7 @@ void RestoreDesktop(WScreen * scr)
 	XSetInputFocus(dpy, PointerRoot, RevertToParent, CurrentTime);
 	wColormapInstallForWindow(scr, NULL);
 	PropCleanUp(scr->root_win);
+	wNotchCleanup(scr);
 	wNETWMCleanup(scr);
 	XSync(dpy, 0);
 }

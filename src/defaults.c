@@ -59,6 +59,8 @@
 #include "actions.h"
 #include "dock.h"
 #include "workspace.h"
+#include "wmspec.h"
+#include "notch.h"
 #include "properties.h"
 #include "misc.h"
 #include "winmenu.h"
@@ -89,6 +91,7 @@ typedef struct {
 /* type converters */
 static WDECallbackConvert getBool;
 static WDECallbackConvert getInt;
+static WDECallbackConvert getIntOrAuto;
 static WDECallbackConvert getPixels;
 static WDECallbackConvert getString;
 static WDECallbackConvert getCoord;
@@ -148,6 +151,7 @@ static WDECallbackUpdate setClipTitleColor;
 static WDECallbackUpdate setMenuStyle;
 static WDECallbackUpdate setSwPOptions;
 static WDECallbackUpdate updateUsableArea;
+static WDECallbackUpdate updateNotch;
 
 static WDECallbackUpdate setModifierKeyLabels;
 static WDECallbackUpdate setModifierShortKeyLabels;
@@ -416,6 +420,10 @@ WDefaultEntry optionList[] = {
 	    &wPreferences.workspace_border_position, getEnum, updateUsableArea, NULL, NULL},
 	{"WorkspaceBorderSize", "0", NULL,
 	    &wPreferences.workspace_border_size, getPixels, updateUsableArea, NULL, NULL},
+	{"NotchHeight", "Auto", NULL,
+	    &wPreferences.notch_height, getIntOrAuto, updateNotch, NULL, NULL},
+	{"NotchFade", "Auto", NULL,
+	    &wPreferences.notch_fade, getIntOrAuto, updateNotch, NULL, NULL},
 	{"StickyIcons", "NO", NULL,
 	    &wPreferences.sticky_icons, getBool, setStickyIcons, NULL, NULL},
 	{"SaveSessionOnExit", "NO", NULL,
@@ -1619,6 +1627,36 @@ static int getInt(WScreen * scr, WDefaultEntry * entry, WMPropList * value, void
 		if (sscanf(val, "%i", &data) != 1) {
 			return False;
 		}
+	}
+
+	if (ret)
+		*ret = &data;
+	if (addr)
+		*(int *)addr = data;
+
+	return True;
+}
+
+/*
+ * A count that is not negative, or "Auto" to let Window Maker choose, which
+ * is stored as -1. The count is not scaled: it is in pixels of the screen.
+ */
+static int getIntOrAuto(WScreen * scr, WDefaultEntry * entry, WMPropList * value, void *addr, void **ret)
+{
+	static int data;
+	const char *val;
+
+	/* Parameter not used, but tell the compiler that it is ok */
+	(void) scr;
+
+	GET_STRING_OR_DEFAULT("Integer or Auto", val);
+
+	if (strcasecmp(val, "Auto") == 0) {
+		data = -1;
+	} else if (sscanf(val, "%i", &data) != 1 || data < 0) {
+		wwarning(_("can't convert \"%s\" to a count or to Auto for key \"%s\""), val, entry->key);
+		wwarning(_("using default \"%s\" instead"), entry->default_value);
+		data = -1;
 	}
 
 	if (ret)
@@ -3577,6 +3615,21 @@ static int updateUsableArea(WScreen * scr, WDefaultEntry * entry, void *bar, voi
 	(void) foo;
 
 	wScreenUpdateUsableArea(scr);
+
+	return 0;
+}
+
+static int updateNotch(WScreen *scr, WDefaultEntry *entry, void *bar, void *foo)
+{
+	/* Parameter not used, but tell the compiler that it is ok */
+	(void) entry;
+	(void) bar;
+	(void) foo;
+
+	/* Does nothing while the screen is being set up, wScreenInit does it then */
+	wNotchUpdate(scr);
+	wScreenUpdateUsableArea(scr);
+	wNETWMUpdateWorkarea(scr);
 
 	return 0;
 }

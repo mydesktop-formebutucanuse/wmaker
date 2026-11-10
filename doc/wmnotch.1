@@ -1,0 +1,48 @@
+.TH wmnotch 1 "November 2026"
+
+.SH NAME
+wmnotch \- shade the camera notch of the screen
+
+.SH SYNOPSIS
+.B wmnotch
+.RI [ options ]
+
+.SH DESCRIPTION
+\fBwmnotch\fR draws a shade over the strip of the screen that is at the height
+of the camera notch of a laptop panel. The shade is black at the edge of the
+screen and fades away a little below the strip, so that the notch melts into
+it. It lies over every window, and what is below it stays visible through it.
+While a fullscreen window is shown, the strip is plain black instead.
+.PP
+It is not meant to be started by hand: \fBwmaker\fR starts it when the screen
+has a notch, tells it where the notch is with the \fI_WINDOWMAKER_NOTCH\fR
+property of the root window, and stops it when it exits. \fBwmnotch\fR exits
+when its standard input is a pipe that gets closed.
+.PP
+The shade is blended with the contents of the windows that are below it, for
+which \fBwmnotch\fR uses the overlay window of the Composite extension. No
+compositing manager is needed, and it should not be used together with one.
+
+.SH OPTIONS
+The following command line options are available:
+.TP
+.B \-\-help
+print a help message with the list of options.
+.TP
+.B \-\-version
+print the version of Window Maker from which the program comes.
+
+.SH CONFIGURATION
+The notch is found from the size of the screen. This can be changed with two
+options of the \fIWindowMaker\fR domain of \fBwmaker\fR:
+.TP
+.B NotchHeight
+height of the strip in pixels of the screen, \fIAuto\fR to find it (default),
+or \fI0\fR to have no strip.
+.TP
+.B NotchFade
+count of rows below the strip where the shade ends, \fIAuto\fR for 3/4 of the
+height of the strip (default).
+
+.SH SEE ALSO
+.BR wmaker (1)

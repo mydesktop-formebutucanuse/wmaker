@@ -46,6 +46,7 @@
 #include "winspector.h"
 #include "workspace.h"
 #include "xinerama.h"
+#include "notch.h"
 #include "usermenu.h"
 #include "placement.h"
 #include "misc.h"
@@ -1077,6 +1078,7 @@ void wFullscreenMonitorsWindow(WWindow *wwin, unsigned long top, unsigned long b
 		rect2 = wwin->screen_ptr->xine_info.screens[monitor];
 		wGetRectUnion(&rect1, &rect2, &rect1);
 	}
+	wNotchClipRect(wwin->screen_ptr, &rect1);
 	wWindowConfigure(wwin, rect1.pos.x, rect1.pos.y, rect1.size.width, rect1.size.height);
 
 	wwin->screen_ptr->bfs_focused_window = wwin->screen_ptr->focused_window;
@@ -1107,6 +1109,7 @@ void wFullscreenWindow(WWindow *wwin)
 
 	head = wGetHeadForWindow(wwin);
 	rect = wGetRectForHead(wwin->screen_ptr, head);
+	wNotchClipRect(wwin->screen_ptr, &rect);
 	wWindowConfigure(wwin, rect.pos.x, rect.pos.y, rect.size.width, rect.size.height);
 
 	wwin->screen_ptr->bfs_focused_window = wwin->screen_ptr->focused_window;

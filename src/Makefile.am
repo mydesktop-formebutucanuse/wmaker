@@ -57,6 +57,8 @@ wmaker_SOURCES = 	\
 	monitor.c \
 	monitor.h \
 	moveres.c \
+	notch.c \
+	notch.h \
 	pixmap.c \
 	pixmap.h \
 	placement.c \

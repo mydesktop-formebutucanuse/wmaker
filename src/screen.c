@@ -40,6 +40,7 @@
 #include "WindowMaker.h"
 #include "def_pixmaps.h"
 #include "screen.h"
+#include "notch.h"
 #include "texture.h"
 #include "pixmap.h"
 #include "menu.h"
@@ -823,7 +824,9 @@ WScreen *wScreenInit(int screen_number)
 	scr->gview = WCreateGeometryView(scr->wmscreen);
 	WMRealizeWidget(scr->gview);
 
+	wNotchInit(scr);
 	wScreenUpdateUsableArea(scr);
+	wNETWMUpdateWorkarea(scr);
 
 	return scr;
 }
@@ -855,6 +858,8 @@ void wScreenUpdateUsableArea(WScreen *scr)
 			scr->totalUsableArea[i].x2 = WMIN(scr->totalUsableArea[i].x2, area.x2);
 			scr->totalUsableArea[i].y2 = WMIN(scr->totalUsableArea[i].y2, area.y2);
 		}
+
+		wNotchReserveArea(scr, i, &scr->totalUsableArea[i]);
 
 		scr->usableArea[i] = scr->totalUsableArea[i];
 
