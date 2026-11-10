@@ -26,14 +26,6 @@ void WMInitializeApplication(const char *applicationName, int *argc, char **argv
 
 	setlocale(LC_ALL, "");
 
-#ifdef I18N
-	if (getenv("NLSPATH"))
-		bindtextdomain("WINGs", getenv("NLSPATH"));
-	else
-		bindtextdomain("WINGs", LOCALEDIR);
-	bind_textdomain_codeset("WINGs", "UTF-8");
-#endif
-
 	_WINGS_progname = argv[0];
 
 	WMApplication.applicationName = wstrdup(applicationName);

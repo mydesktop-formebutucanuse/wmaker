@@ -11,11 +11,6 @@ else
 fi
 # /xx herbert
 
-# name of menu file we install (menu, plmenu)
-inst_menu=""
-
-LOCALE="${LC_ALL-${LC_MESSAGES-$LANG}}"
-
 # directory where system wide configuration is stored
 GLOBALDIR="#pkgdatadir#"
 GLOBALDEFDIR="#sysconfdir#"
@@ -191,7 +186,7 @@ if [ ! -d "$GSDIR/Library/WindowMaker/WPrefs" ]; then
 fi
 
 if test -z "#LITE#" ; then
-FILES="$(cd "$GLOBALDIR" && ls menu menu.* plmenu plmenu.?? wmmacros)"
+FILES="$(cd "$GLOBALDIR" && ls menu plmenu wmmacros)"
 for i in $FILES; do
 # xx herbert
 	if [ -f "$GSDIR/Library/WindowMaker/$i" -a -z "$BATCH" ]; then
@@ -248,11 +243,6 @@ echo "the menu in the property list format can be edited graphically. The"
 echo "menu that will be used by default is the property list one. Read"
 echo "    $GSDIR/Library/WindowMaker/README"
 echo "for information on how to change it."
-  if [ "${inst_menu%.*}" = "menu" ]; then
-echo "However, since you have locale set to $LOCALE and plmenu for such locale"
-echo "was not found, your WMRootMenu contains path to text formated menu:"
-echo "    $GSDIR/Library/WindowMaker/$inst_menu"
-  fi
 }
 
 wmaker_found=0

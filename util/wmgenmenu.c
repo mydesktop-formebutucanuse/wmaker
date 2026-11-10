@@ -78,16 +78,6 @@ int main(int argc, char *argv[])
 	path = getenv("PATH");
 	setlocale(LC_ALL, "");
 
-#if defined(HAVE_LIBINTL_H) && defined(I18N)
-	if (getenv("NLSPATH"))
-		bindtextdomain("wmgenmenu", getenv("NLSPATH"));
-	else
-		bindtextdomain("wmgenmenu", LOCALEDIR);
-
-	bind_textdomain_codeset("wmgenmenu", "UTF-8");
-	textdomain("wmgenmenu");
-#endif
-
 	/*
 	 * The menu generated is a five-level hierarchy, of which the
 	 * top level (RMenu) is only used to hold the others (a single

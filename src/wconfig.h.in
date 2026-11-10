@@ -364,23 +364,12 @@
 #undef  LANGUAGE_SK
 #endif
 
-#if defined(HAVE_LIBINTL_H) && defined(I18N)
-#include <libintl.h>
-#define _(text) gettext(text)
-/* Use N_() in initializers, it will make xgettext pick
- * the string up for translation
+/* The messages are not translated, the macros only mark them:
+ * _() for a message, N_() for one in an initializer, M_() for a menu entry
  */
-#define N_(text) (text)
-#if defined(MENU_TEXTDOMAIN)
-#define M_(text) dgettext(MENU_TEXTDOMAIN, text)
-#else
-#define M_(text) (text)
-#endif
-#else
 #define _(text) (text)
 #define N_(text) (text)
 #define M_(text) (text)
-#endif
 
 #endif /* WMCONFIG_H_ */
 

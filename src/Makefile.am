@@ -171,8 +171,7 @@ wmaker_LDADD = \
 	@LIBXINERAMA@ \
 	@LIBXKBFILE@ \
 	@XLIBS@ \
-	@LIBM@ \
-	@INTLIBS@
+	@LIBM@
 
 ######################################################################
 

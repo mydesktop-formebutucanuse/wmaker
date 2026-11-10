@@ -468,7 +468,7 @@ AC_CHECK_HEADERS([syslog.h], [AC_DEFINE([HAVE_SYSLOG], [1], [Check for syslog])]
 dnl Checks for header files
 dnl =======================
 AC_HEADER_SYS_WAIT
-AC_CHECK_HEADERS(fcntl.h limits.h sys/ioctl.h libintl.h poll.h malloc.h ctype.h \
+AC_CHECK_HEADERS(fcntl.h limits.h sys/ioctl.h poll.h malloc.h ctype.h \
 		 string.h strings.h)
 
 
@@ -487,16 +487,6 @@ dnl ==========
 PKG_PROG_PKG_CONFIG
 AS_IF([test -z "$PKG_CONFIG"],[AC_MSG_ERROR([pkg-config is required.])])
 
-
-
-dnl Internationalization
-dnl ====================
-dnl Detect the language for translations to be installed and check
-dnl that the gettext environment works
-WM_I18N_LANGUAGES
-WM_I18N_XGETTEXT
-WM_I18N_MENUTEXTDOMAIN
-WM_LIBRARY_CONSTRUCTORS
 
 dnl ===========================================
 dnl 		Stuff that uses X
@@ -1006,29 +996,28 @@ AC_CONFIG_FILES(
     Makefile
 
     dnl WRaster Library
-    wrlib/Makefile wrlib/po/Makefile
+    wrlib/Makefile
     wrlib/tests/Makefile
 
     dnl WINGs toolkit
-    WINGs/Makefile WINGs/WINGs/Makefile WINGs/po/Makefile
+    WINGs/Makefile WINGs/WINGs/Makefile
     WINGs/Documentation/Makefile WINGs/Resources/Makefile WINGs/Extras/Makefile
     WINGs/Examples/Makefile WINGs/Tests/Makefile
 
     dnl Window Maker's core
-    src/Makefile src/wconfig.h po/Makefile
+    src/Makefile src/wconfig.h
     doc/Makefile doc/build/Makefile
-    doc/sk/Makefile doc/cs/Makefile doc/ru/Makefile
     WindowMaker/Makefile WindowMaker/Backgrounds/Makefile
     WindowMaker/Defaults/Makefile WindowMaker/IconSets/Makefile
     WindowMaker/Icons/Makefile WindowMaker/Pixmaps/Makefile
     WindowMaker/Styles/Makefile WindowMaker/Themes/Makefile
 
     dnl Preference GUI
-    WPrefs.app/Makefile WPrefs.app/po/Makefile
+    WPrefs.app/Makefile
     WPrefs.app/tiff/Makefile WPrefs.app/xpm/Makefile
 
     dnl Command-line utilities
-    util/Makefile util/po/Makefile
+    util/Makefile
 
     dnl Misceleanous stuff
     wmlib/Makefile
@@ -1052,7 +1041,6 @@ echo "Supported X extensions:             :$supported_xext"
 echo "Supported graphic format libraries  :$supported_gfx"
 echo "Unsupported features                :$unsupported"
 echo "Pango text layout support in WINGs  : $pango"
-echo "Translated languages to support     :$supported_locales"
 AS_IF([test "x$native" = "xyes"],
     [AS_ECHO(["Target architecture                 : native"]) ],
     [AS_ECHO(["Target architecture                 : generic"]) ])
@@ -1064,9 +1052,6 @@ echo
 
 AS_IF([test "x$wm_cv_prog_cc_nestedfunc" != "xyes"],
     [AC_MSG_WARN([[Your compiler does not support Nested Function, work-around enabled]])])
-
-AS_IF([test "x$supported_locales" = "x"],
-    [AC_MSG_WARN([[No language from \$LINGUAS are supported]])])
 
 AS_IF([test "x$enable_jpeg" = xno], [dnl
     AS_ECHO(["WARNING   WARNING   WARNING   WARNING   WARNING   WARNING   WARNING"])
@@ -1082,14 +1067,6 @@ AS_IF([test "x$enable_jpeg" = xno], [dnl
     AS_ECHO(["WARNING   WARNING   WARNING   WARNING   WARNING   WARNING   WARNING"])dnl
 ])
 
-AS_IF([test "x$LINGUAS" != "x"],
-    [AS_IF([test "X$wm_cv_library_constructors" = "Xlegacy"],
-        [AC_MSG_WARN([I18N is enabled, but library constructor attribute is not supported])
-         AS_ECHO(["   If you have translation problems in lib WRaster, yet you know that the translation"])
-         AS_ECHO(["   file (po) is valid, this could be a cause."])
-         AS_ECHO([])dnl
-        ])dnl
-    ])
 
 
 dnl This is for Emacs.  I'm lazy, I know... (nicolai)

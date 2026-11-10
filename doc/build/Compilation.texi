@@ -219,12 +219,6 @@ For @emph{GIF} image support,
 The reference library from @emph{Google} for their image format,
 @uref{https://developers.google.com/speed/webp/download}
 
-@item @emph{GNU xgettext}
-
-If you want to use translated messages, you will need @emph{GNU gettext}.
-Other versions of @emph{gettext} are not compatible and will not work.
-Get the @emph{GNU} version from @uref{http://www.gnu.org/software/gettext/}
-
 @item @emph{Pango} 1.36.8 or newer
 
 This library can be used by the @emph{WINGs} toolkit to improve support for @emph{UTF-8} and for
@@ -392,9 +386,8 @@ You might want to take a look at the @cite{FAQ} too.
 
 @section Locales/Internationalisation
 
-@sc{Window Maker} has national language support. The procedure to enable national
-language support is described in the dedicated
-@ref{Enabling Languages support,,,wmaker_i18n,@file{README.i18n}}.
+The messages and the menus of @sc{Window Maker} are in English only, there is no translation to
+enable.
 
 
 @section Configure Options
@@ -619,10 +612,6 @@ This feature, disabled by default, allows to add a user-defined custom menu to a
 when choosing an entry of the menu it will send the key combination defined by the user to that
 application. @xref{Application User Menu,,,NEWS,@file{NEWS}} for more information.
 
-@item --with-menu-textdomain=@i{DOMAIN}
-Selection of the domain used for translation of the menus;
-@pxref{Translations for Menus,,,wmaker_i18n,@file{README.i18n}}.
-
 @end table
 
 
@@ -758,16 +747,6 @@ If you are upgrading from an older version of @sc{Window Maker}:
 When you have some trouble during configuration (while running configure), like not being able to
 use a graphic format library you think you have installed, look at the @file{config.log} file for
 clues of the problem.
-
-
-@section Error with loading fonts, even if they exist
-
-This is probably a problem with NLS (Native Language Support), you probably want to look at the
-@ref{Troubleshooting,,,wmaker_i18n,@file{README.i18n}}
-or try rebuilding without NLS support, which is done with:
-@example
-./configure LINGUAS=""
-@end example
 
 
 @section configure doesn't detect @emph{libtiff}, or other graphic libraries

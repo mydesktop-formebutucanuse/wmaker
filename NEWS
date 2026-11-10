@@ -108,6 +108,27 @@ their class. The new AppIconForUngroupedWindows option changes this:
 mapped after the change; EmulateAppIcon still does it for a single class.
 
 
+English only
+------------
+
+Window Maker is not translated any more. The message catalogs (po files),
+the localized menus (menu.xx, plmenu.xx, appearance.menu.xx,
+background.menu.xx) and the translated manual pages (doc/cs, doc/ru,
+doc/sk) were all removed, and the gettext support went with them:
+
+- configure has no LINGUAS variable and no --with-menu-textdomain option
+  any more, it does not look for gettext, msgfmt or xgettext, and nothing
+  is installed in the locale directory;
+- there is no "make update-lang" target, the scripts that worked on the po
+  files and README.i18n (doc/build/Translations.texi) are gone;
+- wmaker.inst only installs the English menu and plmenu.
+
+The _(), N_() and M_() macros are kept in the sources, they only mark the
+messages. The locale is still set (setlocale) and wmaker still looks for a
+menu file with the locale as its suffix (menu.xx), so a menu of your own in
+another language keeps working.
+
+
 Icon of the active application looks pushed in
 ----------------------------------------------
 

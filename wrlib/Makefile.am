@@ -1,6 +1,6 @@
 ## automake input file for wrlib
 
-SUBDIRS = . po
+SUBDIRS = .
 DIST_SUBDIRS = $(SUBDIRS) tests
 
 dist-hook:
