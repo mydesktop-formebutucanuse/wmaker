@@ -21,12 +21,8 @@
 
 #include "../config.h"
 
-#if defined(HAVE_LIBINTL_H) && defined(I18N)
-# include <libintl.h>
-# define _(text) dgettext("WINGs", text)
-#else
-# define _(text) (text)
-#endif
+/* The messages of WINGs are not translated, the macro only marks them */
+#define _(text) (text)
 
 #ifdef HAVE_SECURE_GETENV
 #define GETENV(x) secure_getenv((x))

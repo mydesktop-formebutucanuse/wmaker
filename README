@@ -72,8 +72,7 @@ in the directories.
 * INSTALL has installation instructions and some troubleshooting tips.
 You're meant to read it if you are compiling the sources.
 
-* FAQ: Frequently Asked Questions. READ IT!!! FAQ.I18N is for
-internationalization related questions.
+* FAQ: Frequently Asked Questions. READ IT!!!
 
 * NEWS: list user visible changes from the previous version. Read it if
 you are upgrading.
@@ -120,9 +119,6 @@ Directories & Files in the Source Tree
 * WINGs/ NEXTSTEP lookalike widget library
 
 * wrlib/ image processing library
-
-* po/ has message catalogs which are the translated versions of the messages
-  displayed by Window Maker.
 
 
 HELP ME!!!
@@ -307,8 +303,7 @@ screenshots.
 
 
 The AUTHORS file contains a list of the people who have contributed to the
-project. The names of people who have helped with localization (translation) can
-be found in po/README and Window Maker/README
+project.
 
 If you have any comments, fixes and bug reports (filled BUGFORMs) send them
 to wmaker-dev@googlegroups.com

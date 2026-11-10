@@ -18,19 +18,14 @@
  */
 
 /*
- * This file defines the basic stuff for WRaster's message
- * internationalization in the code
+ * This file defines the macros that mark the messages of WRaster in the code
  */
 
 #ifndef WRASTER_I18N_H
 #define WRASTER_I18N_H
 
-#if defined(HAVE_LIBINTL_H) && defined(I18N)
-# include <libintl.h>
-# define _(text) dgettext("WRaster", (text))
-#else
-# define _(text) (text)
-#endif
+/* The messages of WRaster are not translated, the macro only marks them */
+#define _(text) (text)
 
 /*
  * the N_ macro is used for initializers, it will make xgettext pick the

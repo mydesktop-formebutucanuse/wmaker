@@ -127,22 +127,6 @@ int main(int argc, char **argv)
 
 	setlocale(LC_ALL, "");
 
-#ifdef I18N
-	if (getenv("NLSPATH"))
-		bindtextdomain("WPrefs", getenv("NLSPATH"));
-	else
-		bindtextdomain("WPrefs", LOCALEDIR);
-	bind_textdomain_codeset("WPrefs", "UTF-8");
-	textdomain("WPrefs");
-
-	if (!XSupportsLocale()) {
-		wwarning(_("X server does not support locale"));
-	}
-	if (XSetLocaleModifiers("") == NULL) {
-		wwarning(_("cannot set locale modifiers"));
-	}
-#endif
-
 	dpy = XOpenDisplay(display_name);
 	if (!dpy) {
 		wfatal(_("could not open display %s"), XDisplayName(display_name));

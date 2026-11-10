@@ -8,9 +8,7 @@ wpexecbindir = @wprefs_bindir@
 GENERATED_MENUS =\
 	appearance.menu\
 	menu\
-	menu.ko\
 	plmenu\
-	plmenu.ko\
 	wmmacros
 
 dist_prefsdata_DATA =\

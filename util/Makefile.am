@@ -1,5 +1,3 @@
-SUBDIRS = po
-
 AUTOMAKE_OPTIONS =
 
 pkgdatadir  = $(datadir)/@PACKAGE@
@@ -16,7 +14,7 @@ AM_CPPFLAGS = \
 	@HEADER_SEARCH_PATH@ \
 	-DETCDIR=\"sysconfdir\" -DDATADIR=\"pkgdatadir\"
 
-liblist= @LIBRARY_SEARCH_PATH@ @INTLIBS@
+liblist= @LIBRARY_SEARCH_PATH@
 
 wdwrite_LDADD = $(top_builddir)/WINGs/libWUtil.la $(liblist)
 
@@ -48,23 +46,21 @@ wmagnify_LDADD = \
 	$(top_builddir)/WINGs/libWINGs.la \
 	$(top_builddir)/WINGs/libWUtil.la \
 	$(top_builddir)/wrlib/libwraster.la \
-	@XLFLAGS@ @XLIBS@ @INTLIBS@
+	@XLFLAGS@ @XLIBS@
 
 wmsetbg_LDADD = \
 	$(top_builddir)/WINGs/libWINGs.la \
 	$(top_builddir)/WINGs/libWUtil.la \
 	$(top_builddir)/wrlib/libwraster.la \
-	@XLFLAGS@ @LIBXINERAMA@ @XLIBS@ @INTLIBS@
+	@XLFLAGS@ @LIBXINERAMA@ @XLIBS@
 
 wmgenmenu_LDADD = \
-	$(top_builddir)/WINGs/libWUtil.la \
-	@INTLIBS@
+	$(top_builddir)/WINGs/libWUtil.la
 
 wmgenmenu_SOURCES = wmgenmenu.c wmgenmenu.h
 
 wmmenugen_LDADD = \
-	$(top_builddir)/WINGs/libWUtil.la \
-	@INTLIBS@
+	$(top_builddir)/WINGs/libWUtil.la
 
 wmmenugen_SOURCES = wmmenugen.c wmmenugen.h wmmenugen_misc.c \
 	wmmenugen_parse_wmconfig.c \

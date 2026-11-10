@@ -1,9 +1,8 @@
 
 
-The file named menu is the menu in the plain text file format. The files
-named menu.?? (?? are 2 characters, such as pt) are translations of the
-same menu. Plain text menus are preprocessed using cpp (the C Pre-Processor),
-so you can use cpp macros in it.
+The file named menu is the menu in the plain text file format. Plain text
+menus are preprocessed using cpp (the C Pre-Processor), so you can use cpp
+macros in it.
 
 The plmenu file is the same menu, but in the property list format.
 This menu can be edited with WPrefs.app, but since WPrefs.app does not
@@ -16,8 +15,7 @@ place the path for the menu in ~/GNUstep/Defaults/WMRootMenu, enclosed
 in double quotes ("). Ex: "~/GNUstep/Library/WindowMaker/menu"
 
 Instructions for editing the plain text menus can be found in the menu
-file itself, kindly translated to your tongue for your convenience, by
-the translation contributors.
+file itself.
 
 There is a script to convert plain text menus to property list menus
 in the utils directory, named wm-oldmenu2new.
@@ -26,15 +24,3 @@ If you are unsure to wich format to use, stick with the plain text menus
 as they are more flexible. If for some psychological reason you are
 scared by text based configuration, use the property list menu.
 
-
-Localized menu file translators:
---------------------------------
-
-File    Language        Maintainer
-------------------------------------------------------------------------------
-menu.ko	Korean		Chae-Yong Chong <cychong@metro.telecom.samsung.co.kr>
-			Byeong-Chan Kim <redhands@linux.sarang.net>
-
-plmenu.ko Korean	Byeong-Chan Kim <redhands@linux.sarang.net>
-
-Korean is the only translation of the menus kept in this tree.

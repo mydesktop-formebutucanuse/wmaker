@@ -2,7 +2,7 @@
 
 AUTOMAKE_OPTIONS =
 
-SUBDIRS = WINGs . po Documentation Resources
+SUBDIRS = WINGs . Documentation Resources
 DIST_SUBDIRS = $(SUBDIRS) Tests Examples Extras
 
 dist-hook:
@@ -15,7 +15,7 @@ libWUtil_la_LDFLAGS = -version-info @WUTIL_VERSION@
 lib_LTLIBRARIES = libWUtil.la libWINGs.la
 
 
-LDADD= libWUtil.la libWINGs.la $(top_builddir)/wrlib/libwraster.la @INTLIBS@
+LDADD= libWUtil.la libWINGs.la $(top_builddir)/wrlib/libwraster.la
 libWINGs_la_LIBADD = libWUtil.la $(top_builddir)/wrlib/libwraster.la @XLIBS@ @XFT_LIBS@ @FCLIBS@ @LIBM@ @PANGO_LIBS@
 libWUtil_la_LIBADD = @LIBBSD@
 
@@ -110,7 +110,7 @@ WINGs.pc: Makefile
 	@echo 'Version: $(VERSION)' >> $@
 	@echo 'Requires: wrlib WUtil' >> $@
 	@echo 'Libs: $(lib_search_path) -lWINGs' >> $@
-	@echo 'Libs.private: $(XFT_LIBS) $(PANGOLIBS) $(XLIBS) -lm $(INTLIBS)' >> $@
+	@echo 'Libs.private: $(XFT_LIBS) $(PANGOLIBS) $(XLIBS) -lm' >> $@
 	@echo 'Cflags: $(inc_search_path) @PANGO_CFLAGS@' >> $@
 
 WUtil.pc: Makefile
@@ -119,5 +119,4 @@ WUtil.pc: Makefile
 	@echo 'Description: Utility library for WINGs' >> $@
 	@echo 'Version: $(VERSION)' >> $@
 	@echo 'Libs: -L$(libdir) -lWUtil' >> $@
-	@echo 'Libs.private: $(INTLIBS)' >> $@
 	@echo 'Cflags: -I$(includedir)' >> $@

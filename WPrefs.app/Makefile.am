@@ -1,4 +1,4 @@
-SUBDIRS = xpm tiff po
+SUBDIRS = xpm tiff
 
 AUTOMAKE_OPTIONS =
 
@@ -71,5 +71,4 @@ WPrefs_LDADD = \
 	$(top_builddir)/wrlib/libwraster.la \
 	@XLFLAGS@ @XLIBS@ \
 	@LIBM@ \
-	@FCLIBS@ \
-	@INTLIBS@
+	@FCLIBS@
