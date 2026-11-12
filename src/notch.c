@@ -30,7 +30,9 @@
  * The shade lies over the windows, which stay visible below it. Blending it
  * needs the contents of the windows, so it is drawn by a helper, wmnotch (see
  * util/wmnotch.c), which is started here and stops when its standard input
- * is closed, that is to say when Window Maker exits or restarts.
+ * is closed, that is to say when Window Maker exits or restarts. With
+ * NotchFade = 0 the strip is kept free but not shaded: the helper is not
+ * started, or is stopped.
  *
  * The helper is told where the notch is with the _WINDOWMAKER_NOTCH property
  * of the root window, which is a list of 6 CARDINAL:
@@ -325,7 +327,8 @@ void wNotchUpdate(WScreen *scr)
 	notch_publish(scr);
 
 #ifdef USE_XCOMPOSITE
-	if (scr->notch.head >= 0)
+	/* With NotchFade = 0 the strip is kept free, but not shaded */
+	if (scr->notch.head >= 0 && wPreferences.notch_fade != 0)
 		notch_helper_start(scr);
 	else
 		notch_helper_stop(scr);

@@ -24,7 +24,9 @@ change this:
   NotchHeight = Auto;   height of the strip in pixels of the screen, Auto to
                         find it (default), 0 to have no strip
   NotchFade = Auto;     count of rows below the strip where the shade ends,
-                        Auto for 3/4 of the height of the strip (default)
+                        Auto for 3/4 of the height of the strip (default),
+                        0 for no shade: the strip is still kept free of
+                        windows
 
 The shade is drawn by a new helper, "wmnotch", which Window Maker starts and
 stops by itself. It blends the shade with the windows below it by means of

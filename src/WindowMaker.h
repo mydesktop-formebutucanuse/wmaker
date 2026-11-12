@@ -464,7 +464,7 @@ extern struct WPreferences {
 	unsigned int workspace_border_size; /* Size in pixels of the workspace border */
 	char workspace_border_position;     /* Where to leave a workspace border */
 	int notch_height;                   /* Height of the camera notch of the screen, -1 (Auto) to find it, 0 for none */
-	int notch_fade;                     /* Rows below the notch where its shade ends, -1 (Auto) for 3/4 of the notch */
+	int notch_fade;                     /* Rows below the notch where its shade ends, -1 (Auto) for 3/4 of the notch, 0 for no shade */
 	char single_click;                  /* single click to lauch applications */
 	int history_lines;                  /* history of "Run..." dialog */
 	char cycle_active_head_only;        /* Cycle only windows on the active head */
