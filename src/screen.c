@@ -1295,8 +1295,9 @@ void ScreenCapture(WScreen *scr, int mode)
 		return;
 	}
 
-	screenshot_dir = wstrconcat(wusergnusteppath(), "/Library/WindowMaker/Screenshots/");
-	if (-1 == mkdir(screenshot_dir, 0700) && errno != EEXIST) {
+	/* On the desktop of the user, where the screenshots are easy to find */
+	screenshot_dir = wstrconcat(wgethomedir(), "/Desktop/");
+	if (-1 == mkdir(screenshot_dir, 0755) && errno != EEXIST) {
 		wfree(screenshot_dir);
 		werror(_("Unable to create screenshot directory: %s"), strerror(errno));
 		return;

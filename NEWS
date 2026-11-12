@@ -3,6 +3,15 @@ NEWS for veteran Window Maker users
 
 -- 0.97.0
 
+Screenshots are saved on the desktop
+------------------------------------
+
+The screenshots taken with the capture shortcuts are now saved in the
+~/Desktop directory, which is created if needed, instead of
+~/GNUstep/Library/WindowMaker/Screenshots. The screenshots that were taken
+before stay where they are.
+
+
 Camera notch of the screen
 --------------------------
 
