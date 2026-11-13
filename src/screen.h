@@ -368,6 +368,8 @@ void wScreenRestoreState(WScreen *scr);
 int wScreenBringInside(WScreen *scr, int *x, int *y, int width, int height);
 int wScreenKeepInside(WScreen *scr, int *x, int *y, int width, int height);
 void ScreenCapture(WScreen *scr, int mode);
+char *wScreenCaptureFilePath(const char *filetype);
+Bool wScreenSelectArea(WScreen *scr, int *rx, int *ry, int *rw, int *rh);
 
 /* in startup.c */
 WScreen *wScreenWithNumber(int i);

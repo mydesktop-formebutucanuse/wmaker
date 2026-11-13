@@ -1146,7 +1146,11 @@ int wScreenKeepInside(WScreen * scr, int *x, int *y, int width, int height)
 	return moved;
 }
 
-static XImage *imageCaptureArea(WScreen *scr)
+/*
+ * Lets the user drag a rectangle on the screen with the first button.
+ * Returns False if the selection was cancelled (Escape) or empty.
+ */
+Bool wScreenSelectArea(WScreen *scr, int *rx, int *ry, int *rw, int *rh)
 {
 	XEvent event;
 	int quit = 0;
@@ -1158,7 +1162,7 @@ static XImage *imageCaptureArea(WScreen *scr)
 	if (XGrabPointer(dpy, scr->root_win, False, ButtonMotionMask
 			| ButtonReleaseMask | ButtonPressMask, GrabModeAsync,
 			GrabModeAsync, None, wPreferences.cursor[WCUR_CAPTURE], CurrentTime) != Success) {
-		return NULL;
+		return False;
 	}
 	XGrabKeyboard(dpy, scr->root_win, False, GrabModeAsync, GrabModeAsync, CurrentTime);
 
@@ -1182,7 +1186,11 @@ static XImage *imageCaptureArea(WScreen *scr)
 					XUngrabServer(dpy);
 					XUngrabKeyboard(dpy, CurrentTime);
 					XUngrabPointer(dpy, CurrentTime);
-					return XGetImage(dpy, scr->root_win, x, y, w, h, AllPlanes, ZPixmap);
+					*rx = x;
+					*ry = y;
+					*rw = w;
+					*rh = h;
+					return True;
 				}
 			}
 			break;
@@ -1224,7 +1232,17 @@ static XImage *imageCaptureArea(WScreen *scr)
 	XUngrabServer(dpy);
 	XUngrabKeyboard(dpy, CurrentTime);
 	XUngrabPointer(dpy, CurrentTime);
-	return NULL;
+	return False;
+}
+
+static XImage *imageCaptureArea(WScreen *scr)
+{
+	int x, y, w, h;
+
+	if (!wScreenSelectArea(scr, &x, &y, &w, &h))
+		return NULL;
+
+	return XGetImage(dpy, scr->root_win, x, y, w, h, AllPlanes, ZPixmap);
 }
 
 static void hideMiniScreenshot(void *data)
@@ -1267,16 +1285,64 @@ static void showMiniScreenshot(WScreen *scr, RImage *img)
 	scr->mini_screenshot_timer = WMAddTimerHandler(WORKSPACE_NAME_FADE_DELAY, hideMiniScreenshot, scr);
 }
 
-void ScreenCapture(WScreen *scr, int mode)
+/*
+ * Builds the path of a new capture file on the desktop of the user,
+ * named after ScreenshotFilenameTemplate and ending with "filetype".
+ * Returns NULL (after telling why) if no free filename can be made.
+ */
+char *wScreenCaptureFilePath(const char *filetype)
 {
 	time_t s;
 	short i = 0;
 	struct tm *tm_info;
 	char index_str[12] = "";
 	char filename_date_part[60];
-	char filename[60];
+	char filename[80];
 	char *filepath;
 	char *screenshot_dir;
+
+	/* On the desktop of the user, where the screenshots are easy to find */
+	screenshot_dir = wstrconcat(wgethomedir(), "/Desktop/");
+	if (-1 == mkdir(screenshot_dir, 0755) && errno != EEXIST) {
+		wfree(screenshot_dir);
+		werror(_("Unable to create screenshot directory: %s"), strerror(errno));
+		return NULL;
+	}
+
+	s = time(NULL);
+	tm_info = localtime(&s);
+	strftime(filename_date_part, sizeof(filename_date_part), wPreferences.screenshot_filename_template, tm_info);
+
+	if (strchr(filename_date_part, '/') != NULL) {
+		wfree(screenshot_dir);
+		werror(_("Unsafe screenshot filename template, it should not contain a path separator"));
+		return NULL;
+	}
+
+	snprintf(filename, sizeof(filename), "%s%s", filename_date_part, filetype);
+	filepath = wstrconcat(screenshot_dir, filename);
+	while (access(filepath, F_OK) == 0 && i < 600) {
+		i++;
+		sprintf(index_str, "_%d", i);
+		snprintf(filename, sizeof(filename), "%s%s%s", filename_date_part, index_str, filetype);
+		wfree(filepath);
+		filepath = wstrconcat(screenshot_dir, filename);
+	}
+	wfree(screenshot_dir);
+
+	/* cannot generate an available filename ?! */
+	if (i == 600) {
+		wfree(filepath);
+		werror(_("Could not generate a free screenshot filename"));
+		return NULL;
+	}
+
+	return filepath;
+}
+
+void ScreenCapture(WScreen *scr, int mode)
+{
+	char *filepath;
 	RImage *img = NULL;
 	RImage *scale_img = NULL;
 
@@ -1295,43 +1361,9 @@ void ScreenCapture(WScreen *scr, int mode)
 		return;
 	}
 
-	/* On the desktop of the user, where the screenshots are easy to find */
-	screenshot_dir = wstrconcat(wgethomedir(), "/Desktop/");
-	if (-1 == mkdir(screenshot_dir, 0755) && errno != EEXIST) {
-		wfree(screenshot_dir);
-		werror(_("Unable to create screenshot directory: %s"), strerror(errno));
+	filepath = wScreenCaptureFilePath(filetype);
+	if (!filepath)
 		return;
-	}
-
-	s = time(NULL);
-	tm_info = localtime(&s);
-	strftime(filename_date_part, sizeof(filename_date_part), wPreferences.screenshot_filename_template, tm_info);
-
-	if (strchr(filename_date_part, '/') != NULL) {
-		wfree(screenshot_dir);
-		werror(_("Unsafe screenshot filename template, it should not contain a path separator"));
-		return;
-	}
-
-	strcpy(filename, filename_date_part);
-
-	filepath = wstrconcat(screenshot_dir, strcat(filename, filetype));
-	while (access(filepath, F_OK) == 0 && i < 600) {
-		i++;
-		strcpy(filename, filename_date_part);
-		sprintf(index_str, "_%d", i);
-		strncat(filename, index_str, sizeof(filename) - strlen(filename) - 1);
-		wfree(filepath);
-		filepath = wstrconcat(screenshot_dir, strcat(filename, filetype));
-	}
-
-	/* cannot generate an available filename ?! */
-	if (i == 600) {
-		wfree(filepath);
-		wfree(screenshot_dir);
-		werror(_("Could not generate a free screenshot filename"));
-		return;
-	}
 
 	switch (mode) {
 		WWindow *wwin;
@@ -1400,7 +1432,6 @@ void ScreenCapture(WScreen *scr, int mode)
 		RReleaseImage(img);
 	}
 	wfree(filepath);
-	wfree(screenshot_dir);
 }
 
 void wScreenDestroy(WScreen *scr)

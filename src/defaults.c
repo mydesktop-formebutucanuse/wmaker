@@ -851,6 +851,8 @@ WDefaultEntry optionList[] = {
 	    NULL, getKeybind, setKeyGrab, NULL, NULL},
 	{"PartialCaptureKey", "None", (void *)WKBD_PRINTP,
 	    NULL, getKeybind, setKeyGrab, NULL, NULL},
+	{"PartialRecordKey", "None", (void *)WKBD_RECORDP,
+	    NULL, getKeybind, setKeyGrab, NULL, NULL},
 	/* Vim-like Window Marking */
 	{"MarkSetKey", "None", (void *)WKBD_MARK_SET,
 		NULL, getKeybind, setKeyGrab, NULL, NULL},

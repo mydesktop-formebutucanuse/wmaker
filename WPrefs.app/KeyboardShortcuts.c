@@ -175,7 +175,8 @@ static struct keyOption {
 	{ "ClipRaiseLowerKey", N_("Raise/Lower Clip") },
 	{ "ScreenCaptureKey", N_("Capture the entire screen") },
 	{ "WindowCaptureKey", N_("Capture a window") },
-	{ "PartialCaptureKey", N_("Capture a portion of the screen") }
+	{ "PartialCaptureKey", N_("Capture a portion of the screen") },
+	{ "PartialRecordKey", N_("Record a portion of the screen") }
 #ifdef XKB_MODELOCK
 	,{ "ToggleKbdModeKey", N_("Toggle keyboard language") }
 #endif				/* XKB_MODELOCK */
