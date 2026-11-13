@@ -40,6 +40,8 @@
 #include "WindowMaker.h"
 #include "def_pixmaps.h"
 #include "screen.h"
+#include "screenrec.h"
+#include "keybind.h"
 #include "notch.h"
 #include "texture.h"
 #include "pixmap.h"
@@ -1148,12 +1150,24 @@ int wScreenKeepInside(WScreen * scr, int *x, int *y, int width, int height)
 
 /*
  * Lets the user drag a rectangle on the screen with the first button.
- * Returns False if the selection was cancelled (Escape) or empty.
+ * Returns SELECT_AREA_DONE with the rectangle, SELECT_AREA_CANCELLED if
+ * Escape was pressed or the rectangle is empty, or, when "record_key" is
+ * set, SELECT_AREA_RECORD if the PartialRecordKey shortcut was pressed.
  */
-Bool wScreenSelectArea(WScreen *scr, int *rx, int *ry, int *rw, int *rh)
+static Bool isRecordKey(XKeyEvent *ev)
+{
+	WShortKey *k = &wKeyBindings[WKBD_RECORDP];
+
+	/* only a single key can be typed here, not a key chain */
+	return k->keycode != 0 && k->chain_length <= 1 && ev->keycode == k->keycode &&
+	       (ev->state & w_global.shortcut.modifiers_mask) == k->modifier;
+}
+
+int wScreenSelectArea(WScreen *scr, Bool record_key, int *rx, int *ry, int *rw, int *rh)
 {
 	XEvent event;
 	int quit = 0;
+	int result = SELECT_AREA_CANCELLED;
 	int xp = -1;
 	int yp = -1;
 	int w = 0, h = 0;
@@ -1162,7 +1176,7 @@ Bool wScreenSelectArea(WScreen *scr, int *rx, int *ry, int *rw, int *rh)
 	if (XGrabPointer(dpy, scr->root_win, False, ButtonMotionMask
 			| ButtonReleaseMask | ButtonPressMask, GrabModeAsync,
 			GrabModeAsync, None, wPreferences.cursor[WCUR_CAPTURE], CurrentTime) != Success) {
-		return False;
+		return SELECT_AREA_CANCELLED;
 	}
 	XGrabKeyboard(dpy, scr->root_win, False, GrabModeAsync, GrabModeAsync, CurrentTime);
 
@@ -1190,7 +1204,7 @@ Bool wScreenSelectArea(WScreen *scr, int *rx, int *ry, int *rw, int *rh)
 					*ry = y;
 					*rw = w;
 					*rh = h;
-					return True;
+					return SELECT_AREA_DONE;
 				}
 			}
 			break;
@@ -1221,6 +1235,12 @@ Bool wScreenSelectArea(WScreen *scr, int *rx, int *ry, int *rw, int *rh)
 				if (w > 0 && h > 0)
 					XDrawRectangle(dpy, scr->root_win, scr->frame_gc, x, y, w, h);
 				quit = 1;
+			} else if (record_key && isRecordKey(&event.xkey)) {
+				/* e.g. R typed while the PartialCaptureKey Alt_R is held */
+				if (w > 0 && h > 0)
+					XDrawRectangle(dpy, scr->root_win, scr->frame_gc, x, y, w, h);
+				result = SELECT_AREA_RECORD;
+				quit = 1;
 			}
 			break;
 		default:
@@ -1232,15 +1252,22 @@ Bool wScreenSelectArea(WScreen *scr, int *rx, int *ry, int *rw, int *rh)
 	XUngrabServer(dpy);
 	XUngrabKeyboard(dpy, CurrentTime);
 	XUngrabPointer(dpy, CurrentTime);
-	return False;
+	return result;
 }
 
-static XImage *imageCaptureArea(WScreen *scr)
+static XImage *imageCaptureArea(WScreen *scr, Bool *record)
 {
 	int x, y, w, h;
 
-	if (!wScreenSelectArea(scr, &x, &y, &w, &h))
+	switch (wScreenSelectArea(scr, True, &x, &y, &w, &h)) {
+	case SELECT_AREA_DONE:
+		break;
+	case SELECT_AREA_RECORD:
+		*record = True;
 		return NULL;
+	default:
+		return NULL;
+	}
 
 	return XGetImage(dpy, scr->root_win, x, y, w, h, AllPlanes, ZPixmap);
 }
@@ -1345,6 +1372,7 @@ void ScreenCapture(WScreen *scr, int mode)
 	char *filepath;
 	RImage *img = NULL;
 	RImage *scale_img = NULL;
+	Bool record = False;
 
 #ifdef USE_PNG
 	char *filetype = ".png";
@@ -1409,7 +1437,7 @@ void ScreenCapture(WScreen *scr, int mode)
 			}
 			break;
 		case PRINT_PARTIAL:
-			pimg = imageCaptureArea(scr);
+			pimg = imageCaptureArea(scr, &record);
 			if (pimg) {
 				img = RCreateImageFromXImage(scr->rcontext, pimg, None);
 				XDestroyImage(pimg);
@@ -1432,6 +1460,10 @@ void ScreenCapture(WScreen *scr, int mode)
 		RReleaseImage(img);
 	}
 	wfree(filepath);
+
+	/* the PartialRecordKey shortcut was typed during the selection */
+	if (record)
+		wScreenRecordToggle(scr);
 }
 
 void wScreenDestroy(WScreen *scr)

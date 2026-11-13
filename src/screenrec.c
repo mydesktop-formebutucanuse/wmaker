@@ -183,7 +183,7 @@ static void recordStart(WScreen *scr)
 	int x, y, w, h;
 	pid_t pid;
 
-	if (!wScreenSelectArea(scr, &x, &y, &w, &h))
+	if (wScreenSelectArea(scr, False, &x, &y, &w, &h) != SELECT_AREA_DONE)
 		return;
 
 	/* the H.264 encoder wants an even width and height */

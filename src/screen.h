@@ -369,7 +369,11 @@ int wScreenBringInside(WScreen *scr, int *x, int *y, int width, int height);
 int wScreenKeepInside(WScreen *scr, int *x, int *y, int width, int height);
 void ScreenCapture(WScreen *scr, int mode);
 char *wScreenCaptureFilePath(const char *filetype);
-Bool wScreenSelectArea(WScreen *scr, int *rx, int *ry, int *rw, int *rh);
+/* results of wScreenSelectArea() */
+#define SELECT_AREA_CANCELLED 0
+#define SELECT_AREA_DONE 1
+#define SELECT_AREA_RECORD 2
+int wScreenSelectArea(WScreen *scr, Bool record_key, int *rx, int *ry, int *rw, int *rh);
 
 /* in startup.c */
 WScreen *wScreenWithNumber(int i);

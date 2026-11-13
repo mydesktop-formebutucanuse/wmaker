@@ -13,11 +13,16 @@ installed, and a red frame is shown around it, outside of the video. The same
 shortcut stops the recording. The video is an H.264 mp4 file saved on the
 desktop, named after ScreenshotFilenameTemplate like the screenshots.
 
-To record when the left Alt key is held with the partial capture key, set for
-example:
+Typing the PartialRecordKey shortcut while the area of a partial screenshot
+is being selected switches to a recording, or stops the current recording.
+So with a modifier key as the partial capture key, for example:
 
   PartialCaptureKey = Alt_R;
-  PartialRecordKey = "MOD1+Alt_R";
+  PartialRecordKey = "MOD1+R";
+
+Alt_R alone takes a screenshot, and Alt_R held while R is typed records a
+video. Note that the shortcut then also works with the left Alt key, and that
+Alt+R is no longer seen by the applications.
 
 The shortcut can also be set in the Keyboard Shortcuts section of WPrefs.
 
