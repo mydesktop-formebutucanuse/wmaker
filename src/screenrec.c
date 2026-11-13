@@ -21,8 +21,8 @@
  *
  * The PartialRecordKey shortcut lets the user drag a rectangle, like the
  * PartialCaptureKey one, and records it with ffmpeg in an mp4 file saved
- * next to the screenshots. A red frame is shown around the recorded area,
- * outside of it so that it is not in the video. The same shortcut stops
+ * next to the screenshots. A small red dot is shown inside the recorded
+ * area, at the corner where the drag started. The same shortcut stops
  * the recording: ffmpeg is sent SIGINT, upon which it finishes the file.
  */
 
@@ -41,6 +41,9 @@
 #endif
 
 #include <X11/Xlib.h>
+#ifdef USE_XSHAPE
+#include <X11/extensions/shape.h>
+#endif
 
 #include <WINGs/WUtil.h>
 
@@ -52,8 +55,9 @@
 #include "main.h"
 #include "screenrec.h"
 
-#define RECORD_FRAME_COLOR "red"
-#define RECORD_FRAME_WIDTH WMScaled(2)
+#define RECORD_MARK_COLOR "red"
+#define RECORD_MARK_SIZE WMScaled(12)	/* diameter of the dot */
+#define RECORD_MARK_INSET WMScaled(6)	/* from the edges of the area */
 #define RECORD_FRAMERATE "30"
 /* how long Window Maker waits for ffmpeg to finish the file when it exits */
 #define RECORD_FINISH_TIMEOUT_MS 10000
@@ -62,50 +66,77 @@ static struct {
 	pid_t pid;		/* ffmpeg, 0 when not recording */
 	Bool stopping;		/* SIGINT was sent, waiting for ffmpeg to finish */
 	char *filepath;
-	Window frame[4];	/* red edges around the recorded area */
+	Window mark;		/* red dot in a corner of the recorded area */
 } record;
 
-static void frameShow(WScreen *scr, int x, int y, int w, int h)
+/*
+ * Shows the red dot inside the area (x, y, w, h), in the corner where the
+ * drag started, so that it is near where the user looks.
+ */
+static void markShow(WScreen *scr, int x, int y, int w, int h, XPoint start)
 {
 	XSetWindowAttributes attribs;
 	XColor color;
-	const int t = RECORD_FRAME_WIDTH;
-	const int geom[4][4] = {
-		{ x - t, y - t, w + 2 * t, t },	/* top */
-		{ x - t, y + h, w + 2 * t, t },	/* bottom */
-		{ x - t, y, t, h },		/* left */
-		{ x + w, y, t, h }		/* right */
-	};
-	int i;
+	const int d = RECORD_MARK_SIZE;
+	const int m = RECORD_MARK_INSET;
+	int mx, my;
 
-	if (!wGetColor(scr, RECORD_FRAME_COLOR, &color))
+	if (start.x <= x)
+		mx = x + m;
+	else
+		mx = x + w - m - d;
+	if (start.y <= y)
+		my = y + m;
+	else
+		my = y + h - m - d;
+
+	/* keep it inside of a small area */
+	if (mx + d > x + w)
+		mx = x + w - d;
+	if (mx < x)
+		mx = x;
+	if (my + d > y + h)
+		my = y + h - d;
+	if (my < y)
+		my = y;
+
+	if (!wGetColor(scr, RECORD_MARK_COLOR, &color))
 		color.pixel = scr->black_pixel;
 
 	attribs.override_redirect = True;
 	attribs.background_pixel = color.pixel;
 	attribs.colormap = scr->w_colormap;
 
-	for (i = 0; i < 4; i++) {
-		record.frame[i] = XCreateWindow(dpy, scr->root_win, geom[i][0], geom[i][1],
-		                                geom[i][2], geom[i][3], 0, scr->w_depth,
-		                                CopyFromParent, scr->w_visual,
-		                                CWOverrideRedirect | CWBackPixel | CWColormap, &attribs);
-		XMapRaised(dpy, record.frame[i]);
+	record.mark = XCreateWindow(dpy, scr->root_win, mx, my, d, d, 0, scr->w_depth,
+	                            CopyFromParent, scr->w_visual,
+	                            CWOverrideRedirect | CWBackPixel | CWColormap, &attribs);
+
+#ifdef USE_XSHAPE
+	{
+		Pixmap shape = XCreatePixmap(dpy, record.mark, d, d, 1);
+		GC gc = XCreateGC(dpy, shape, 0, NULL);
+
+		XSetForeground(dpy, gc, 0);
+		XFillRectangle(dpy, shape, gc, 0, 0, d, d);
+		XSetForeground(dpy, gc, 1);
+		XFillArc(dpy, shape, gc, 0, 0, d, d, 0, 360 * 64);
+		XShapeCombineMask(dpy, record.mark, ShapeBounding, 0, 0, shape, ShapeSet);
+		XFreeGC(dpy, gc);
+		XFreePixmap(dpy, shape);
 	}
+#endif
+
+	XMapRaised(dpy, record.mark);
 	XFlush(dpy);
 }
 
-static void frameHide(void)
+static void markHide(void)
 {
-	int i;
-
-	for (i = 0; i < 4; i++) {
-		if (record.frame[i] != None) {
-			XDestroyWindow(dpy, record.frame[i]);
-			record.frame[i] = None;
-		}
+	if (record.mark != None) {
+		XDestroyWindow(dpy, record.mark);
+		record.mark = None;
+		XFlush(dpy);
 	}
-	XFlush(dpy);
 }
 
 static void recordDied(pid_t pid, unsigned int status, void *cdata)
@@ -122,7 +153,7 @@ static void recordDied(pid_t pid, unsigned int status, void *cdata)
 	else if (status != 0 && status != 255)
 		werror(_("ffmpeg exited with status %u, the video \"%s\" may be broken"), status, record.filepath);
 
-	frameHide();
+	markHide();
 	wfree(record.filepath);
 	record.filepath = NULL;
 	record.pid = 0;
@@ -181,9 +212,10 @@ static void recordChild(WScreen *scr, const char *filepath, int x, int y, int w,
 static void recordStart(WScreen *scr)
 {
 	int x, y, w, h;
+	XPoint start;
 	pid_t pid;
 
-	if (wScreenSelectArea(scr, False, &x, &y, &w, &h) != SELECT_AREA_DONE)
+	if (wScreenSelectArea(scr, False, &x, &y, &w, &h, &start) != SELECT_AREA_DONE)
 		return;
 
 	/* the H.264 encoder wants an even width and height */
@@ -210,7 +242,7 @@ static void recordStart(WScreen *scr)
 	record.stopping = False;
 	wAddDeathHandler(pid, recordDied, NULL);
 
-	frameShow(scr, x, y, w, h);
+	markShow(scr, x, y, w, h, start);
 }
 
 void wScreenRecordStop(void)
@@ -222,7 +254,7 @@ void wScreenRecordStop(void)
 	kill(record.pid, SIGINT);
 
 	/* ffmpeg may take a moment to finish the file, show at once it is done */
-	frameHide();
+	markHide();
 }
 
 void wScreenRecordFinish(void)

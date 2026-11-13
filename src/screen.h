@@ -373,7 +373,7 @@ char *wScreenCaptureFilePath(const char *filetype);
 #define SELECT_AREA_CANCELLED 0
 #define SELECT_AREA_DONE 1
 #define SELECT_AREA_RECORD 2
-int wScreenSelectArea(WScreen *scr, Bool record_key, int *rx, int *ry, int *rw, int *rh);
+int wScreenSelectArea(WScreen *scr, Bool record_key, int *rx, int *ry, int *rw, int *rh, XPoint *start);
 
 /* in startup.c */
 WScreen *wScreenWithNumber(int i);

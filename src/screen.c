@@ -1153,6 +1153,7 @@ int wScreenKeepInside(WScreen * scr, int *x, int *y, int width, int height)
  * Returns SELECT_AREA_DONE with the rectangle, SELECT_AREA_CANCELLED if
  * Escape was pressed or the rectangle is empty, or, when "record_key" is
  * set, SELECT_AREA_RECORD if the PartialRecordKey shortcut was pressed.
+ * If "start" is not NULL, it gets the point where the drag started.
  */
 static Bool isRecordKey(XKeyEvent *ev)
 {
@@ -1163,7 +1164,7 @@ static Bool isRecordKey(XKeyEvent *ev)
 	       (ev->state & w_global.shortcut.modifiers_mask) == k->modifier;
 }
 
-int wScreenSelectArea(WScreen *scr, Bool record_key, int *rx, int *ry, int *rw, int *rh)
+int wScreenSelectArea(WScreen *scr, Bool record_key, int *rx, int *ry, int *rw, int *rh, XPoint *start)
 {
 	XEvent event;
 	int quit = 0;
@@ -1204,6 +1205,10 @@ int wScreenSelectArea(WScreen *scr, Bool record_key, int *rx, int *ry, int *rw, 
 					*ry = y;
 					*rw = w;
 					*rh = h;
+					if (start) {
+						start->x = xp;
+						start->y = yp;
+					}
 					return SELECT_AREA_DONE;
 				}
 			}
@@ -1259,7 +1264,7 @@ static XImage *imageCaptureArea(WScreen *scr, Bool *record)
 {
 	int x, y, w, h;
 
-	switch (wScreenSelectArea(scr, True, &x, &y, &w, &h)) {
+	switch (wScreenSelectArea(scr, True, &x, &y, &w, &h, NULL)) {
 	case SELECT_AREA_DONE:
 		break;
 	case SELECT_AREA_RECORD:
