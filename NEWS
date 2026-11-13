@@ -3,6 +3,25 @@ NEWS for veteran Window Maker users
 
 -- 0.97.0
 
+Video recording of a portion of the screen
+------------------------------------------
+
+The new PartialRecordKey shortcut records a portion of the screen in a video.
+Like PartialCaptureKey, it lets you drag a rectangle with the first button
+(Escape cancels). The area is then recorded with ffmpeg, which must be
+installed, and a red frame is shown around it, outside of the video. The same
+shortcut stops the recording. The video is an H.264 mp4 file saved on the
+desktop, named after ScreenshotFilenameTemplate like the screenshots.
+
+To record when the left Alt key is held with the partial capture key, set for
+example:
+
+  PartialCaptureKey = Alt_R;
+  PartialRecordKey = "MOD1+Alt_R";
+
+The shortcut can also be set in the Keyboard Shortcuts section of WPrefs.
+
+
 Screenshots are saved on the desktop
 ------------------------------------
 

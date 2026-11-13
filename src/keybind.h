@@ -169,6 +169,9 @@ enum {
 	/* partial print */
 	WKBD_PRINTP,
 
+	/* partial video recording */
+	WKBD_RECORDP,
+
 #ifdef KEEP_XKB_LOCK_STATUS
 	WKBD_TOGGLE,
 #endif
