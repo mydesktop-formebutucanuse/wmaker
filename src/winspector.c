@@ -922,9 +922,12 @@ static void applySettings(WMWidget *button, void *client_data)
 		wfree(file);
 	}
 
-	/* The image may change with "Ignore client supplied icon" alone */
+	/* The image may change with "Ignore client supplied icon" alone: the
+	 * appicon follows what the windows say now, not one that is gone */
 	if (wwin->icon)
 		wIconUpdate(wwin->icon);
+	if (wapp)
+		wapp->flags.keeps_user_icon = 0;
 	wApplicationUpdateIcon(wapp);
 
 	wNETFrameExtents(wwin);

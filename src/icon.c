@@ -733,8 +733,9 @@ void set_icon_minipreview(WIcon *icon, RImage *image)
  * soon as client icons are ignored.
  *
  * An application ignores the client icons when its group leader or any of
- * its windows does: the leader is often a hidden window with a class of its
- * own the user never sets anything for. Its icon file is the one of the
+ * its windows does, and goes on when those windows are gone: the leader is
+ * often a hidden window with a class of its own the user never sets anything
+ * for, and it outlives the windows. Its icon file is the one of the
  * leader (or of the dock), else the one of its windows. A window without an
  * icon of its own shows the icon of its application, if it has the class of
  * the application.
@@ -826,7 +827,9 @@ static RImage *get_default_icon_image(WScreen *scr)
 /*
  * The icon file of an application: the one of the leader unless it is just
  * a client icon saved for the dock, else the one of its windows (those
- * ignoring the client icons first, the most recently focused first).
+ * ignoring the client icons first, the most recently focused first). When
+ * the windows ignoring the client icons are gone, the file they had the
+ * appicon show is kept.
  */
 static char *get_application_icon_file(WIcon *icon, WApplication *wapp)
 {
@@ -848,6 +851,10 @@ static char *get_application_icon_file(WIcon *icon, WApplication *wapp)
 
 			path = get_icon_filename(wwin->wm_instance, wwin->wm_class, NULL, False);
 		}
+
+		if (pass == 0 && !path && wapp->flags.keeps_user_icon &&
+		    icon->image_file && !icon->client_image)
+			path = wstrdup(icon->image_file);
 	}
 
 	if (!path && icon->file)
