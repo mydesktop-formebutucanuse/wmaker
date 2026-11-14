@@ -1449,7 +1449,7 @@ WWindow *wManageWindow(WScreen *scr, Window window)
 
 	/* The appicon may depend on the icon settings of this window */
 	if (wwin->main_window != None)
-		wApplicationUpdateIconFor(wwin);
+		wApplicationUpdateIconFor(wwin, False);
 
 	/* raise is set to true if we un-hid the app when this window was born.
 	 * we raise, else old windows of this app will be above this new one. */
@@ -1811,7 +1811,7 @@ void wUnmanageWindow(WWindow *wwin, Bool restore, Bool destroyed)
 	/* The appicon may have depended on the icon settings of this window
 	 * (it is out of the window list now) */
 	if (oapp)
-		wApplicationUpdateIconFor(wwin);
+		wApplicationUpdateIconFor(wwin, True);
 
 	wNETCleanupFrameExtents(wwin);
 

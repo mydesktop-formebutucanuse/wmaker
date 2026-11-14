@@ -137,6 +137,10 @@ WApplication *wApplicationCreate(WWindow * wwin)
 	wapp->flags.hidden = WFLAGP(wapp->main_window_desc, start_hidden);
 	wapp->flags.emulated = WFLAGP(wapp->main_window_desc, emulate_appicon);
 
+	/* The window is not in the window list yet: don't let the appicon
+	 * show the client icon until wApplicationUpdateIconFor is called */
+	wapp->flags.keeps_user_icon = WFLAGP(wwin, always_user_icon);
+
 	/* application descriptor */
 	XSaveContext(dpy, main_window, w_global.context.app_win, (XPointer) wapp);
 
@@ -152,6 +156,10 @@ WApplication *wApplicationCreate(WWindow * wwin)
  * call their windows "Navigator"), so the user never sets its attributes:
  * without this, any new window of the application (a Picture-in-Picture
  * one, for example) would bring the client icon back on the appicon.
+ *
+ * The appicon goes on ignoring them when the windows that asked for it are
+ * gone (keeps_user_icon): a program closes its windows before its leader, or
+ * may stay without a window, and the client icon must not come back then.
  */
 Bool wApplicationIgnoresClientIcons(WApplication *wapp)
 {
@@ -164,7 +172,7 @@ Bool wApplicationIgnoresClientIcons(WApplication *wapp)
 		if (wwin->main_window == wapp->main_window && WFLAGP(wwin, always_user_icon))
 			return True;
 
-	return False;
+	return wapp->flags.keeps_user_icon;
 }
 
 /* Choose the image of the appicon again (see wIconUpdate) */
@@ -185,15 +193,23 @@ void wApplicationUpdateIcon(WApplication *wapp)
  * A window joined or left its application: update the appicon if the icon
  * settings of the window may change it (it ignores the client icons, or
  * the appicon shows an icon file other than the one of the leader, or no
- * icon of its own). The window must be in the window list only if it is
- * joining the application.
+ * icon of its own). The window must be in the window list if it is joining
+ * the application, and out of it if it is leaving.
  */
-void wApplicationUpdateIconFor(WWindow *wwin)
+void wApplicationUpdateIconFor(WWindow *wwin, Bool leaving)
 {
 	WApplication *wapp = wApplicationOf(wwin->main_window);
 	WIcon *icon;
 
-	if (!wapp || !wapp->app_icon || wapp->main_window_desc == wwin)
+	if (!wapp || wapp->main_window_desc == wwin)
+		return;
+
+	/* The appicon remembers the choice of a window that is gone, and
+	 * follows the windows again as soon as one of them makes it */
+	if (WFLAGP(wwin, always_user_icon))
+		wapp->flags.keeps_user_icon = leaving;
+
+	if (!wapp->app_icon)
 		return;
 
 	icon = wapp->app_icon->icon;

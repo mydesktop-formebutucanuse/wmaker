@@ -40,6 +40,8 @@ typedef struct WApplication {
         unsigned int hidden:1;
         unsigned int emulated:1;
         unsigned int bouncing:1;
+        unsigned int keeps_user_icon:1;	/* a window ignoring the client
+					 * icons made the appicon do so */
     } flags;
 } WApplication;
 
@@ -50,7 +52,7 @@ void wApplicationDestroy(WApplication *wapp);
 
 Bool wApplicationIgnoresClientIcons(WApplication *wapp);
 void wApplicationUpdateIcon(WApplication *wapp);
-void wApplicationUpdateIconFor(struct WWindow *wwin);
+void wApplicationUpdateIconFor(struct WWindow *wwin, Bool leaving);
 
 void wAppBounce(WApplication *);
 void wAppBounceWhileUrgent(WApplication *);

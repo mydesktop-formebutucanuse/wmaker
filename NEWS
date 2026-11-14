@@ -189,10 +189,12 @@ appicon showed the client icon, or kept the user icon only until another
 window of the program (a Picture-in-Picture window, for example) brought
 the client icon back. The appicon now ignores the client icons as long as
 any window of the program does, and shows the icon set for the hidden
-window, or else the one set for its windows. A client icon the dock saved
-for the program before does not take precedence over the icon set by the
-user, and the dock remembers the latter for when the program is not
-running.
+window, or else the one set for its windows. It goes on when those windows
+are gone and the program is still there: the client icon no longer comes
+back while a program is closing, or stays without a window. A client icon
+the dock saved for the program before does not take precedence over the
+icon set by the user, and the dock remembers the latter for when the
+program is not running.
 
 The inspector ("Attributes...") now applies the icon settings to windows
 that belong to no application too.
