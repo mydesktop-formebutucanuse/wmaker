@@ -1796,11 +1796,12 @@ int wKeyboardMoveResizeWindow(WWindow * wwin)
 						}
 					}
 				} else {
-					if (ww != original_w)
-						wwin->flags.maximized &= ~(MAX_HORIZONTAL | MAX_TOPHALF | MAX_BOTTOMHALF | MAX_MAXIMUS | MAX_CENTRAL);
-
-					if (wh != original_h)
-						wwin->flags.maximized &= ~(MAX_VERTICAL | MAX_LEFTHALF | MAX_RIGHTHALF | MAX_MAXIMUS | MAX_CENTRAL);
+					if (wWindowForgetMaximized(wwin, ww != original_w, wh != original_h)) {
+						/* keep the frame, which got its decorations back, in the geometry chosen */
+						ww -= 2 * scr->frame_border_width;
+						wh -= 2 * scr->frame_border_width;
+						vert_border = wwin->frame->top_width + wwin->frame->bottom_width;
+					}
 
 					wWindowConfigure(wwin, src_x + off_x, src_y + off_y, ww, wh - vert_border);
 					wWindowSynthConfigureNotify(wwin);
@@ -2019,7 +2020,7 @@ int wMouseMoveWindow(WWindow * wwin, XEvent * ev)
 						moveData.realY = moveData.calcY = wwin->frame_y;
 					}
 					if (wPreferences.drag_maximized_window == DRAGMAX_UNMAXIMIZE) {
-						wwin->flags.maximized = 0;
+						wWindowForgetMaximized(wwin, True, True);
 						wwin->flags.old_maximized = 0;
 					}
 				}
@@ -2458,11 +2459,12 @@ void wMouseResizeWindow(WWindow * wwin, XEvent * ev)
 				WMUnmapWidget(scr->gview);
 				XUngrabServer(dpy);
 
-				if (fw != original_fw)
-					wwin->flags.maximized &= ~(MAX_HORIZONTAL | MAX_TOPHALF | MAX_BOTTOMHALF | MAX_MAXIMUS | MAX_CENTRAL);
-
-				if (fh != original_fh)
-					wwin->flags.maximized &= ~(MAX_VERTICAL | MAX_LEFTHALF | MAX_RIGHTHALF | MAX_MAXIMUS | MAX_CENTRAL);
+				if (wWindowForgetMaximized(wwin, fw != original_fw, fh != original_fh)) {
+					/* keep the frame, which got its decorations back, in the geometry chosen */
+					fw -= 2 * scr->frame_border_width;
+					fh -= 2 * scr->frame_border_width;
+					vert_border = wwin->frame->top_width + wwin->frame->bottom_width;
+				}
 
 				wWindowConfigure(wwin, fx, fy, fw, fh - vert_border);
 				wWindowSynthConfigureNotify(wwin);

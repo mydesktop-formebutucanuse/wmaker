@@ -3,6 +3,19 @@ NEWS for veteran Window Maker users
 
 -- 0.97.0
 
+Maximized windows have no border and no resizebar
+-------------------------------------------------
+
+A window that is maximized in both directions now loses its border and its
+resizebar, so that it fills the whole area: they are of no use there and they
+took room from the window. They come back as soon as the window is no longer
+maximized: when it is unmaximized, resized, or dragged away with
+DragMaximizedWindow set to RestoreGeometry or Unmaximize. The titlebar stays.
+
+The windows maximized in one direction only, in a half or a quarter of the
+screen, or with Maximus keep their decorations.
+
+
 Video recording of a portion of the screen
 ------------------------------------------
 

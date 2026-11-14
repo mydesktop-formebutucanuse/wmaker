@@ -46,6 +46,7 @@
 #include "winspector.h"
 #include "workspace.h"
 #include "xinerama.h"
+#include "wmspec.h"
 #include "notch.h"
 #include "usermenu.h"
 #include "placement.h"
@@ -455,21 +456,14 @@ void wMaximizeWindow(WWindow *wwin, int directions, int head)
 	unsigned int maximus_width = 0;
 	unsigned int maximus_height = 0;
 	WArea usableArea, totalArea;
-	Bool has_border = 1;
 	int adj_size;
 	WScreen *scr = wwin->screen_ptr;
 
 	if (!IS_RESIZABLE(wwin))
 		return;
 
-	if (!HAS_BORDER(wwin))
-		has_border = 0;
-
 	if (wPreferences.drag_maximized_window == DRAGMAX_NOMOVE)
 		wwin->client_flags.no_movable = 1;
-
-	/* the size to adjust the geometry */
-	adj_size = scr->frame_border_width * 2 * has_border;
 
 	/* save old coordinates before we change the current values */
 	if (!wwin->flags.maximized)
@@ -501,6 +495,19 @@ void wMaximizeWindow(WWindow *wwin, int directions, int head)
 		wwin->flags.skip_next_animation = 1;
 		wUnshadeWindow(wwin);
 	}
+
+	/*
+	 * Set the maximization state before computing the geometry: a window
+	 * maximized in both directions loses its resizebar and its border, and
+	 * the size of the client depends on them
+	 */
+	wwin->flags.maximized = directions;
+	if ((wwin->flags.old_maximized & MAX_MAXIMUS) && !wwin->flags.maximized)
+		wwin->flags.maximized = MAX_MAXIMUS;
+	wWindowConfigureBorders(wwin);
+
+	/* the size to adjust the geometry */
+	adj_size = HAS_BORDER(wwin) ? scr->frame_border_width * 2 : 0;
 
 	if (directions & MAX_MAXIMUS) {
 		find_Maximus_geometry(wwin, usableArea, &maximus_x, &maximus_y, &maximus_width, &maximus_height);
@@ -587,11 +594,6 @@ void wMaximizeWindow(WWindow *wwin, int directions, int head)
 
 	if (!WFLAGP(wwin, full_maximize) && !(directions == MAX_MAXIMUS || directions == MAX_HORIZONTAL))
 		new_height -= wwin->frame->top_width + wwin->frame->bottom_width;
-
-	/* set maximization state */
-	wwin->flags.maximized = directions;
-	if ((wwin->flags.old_maximized & MAX_MAXIMUS) && !wwin->flags.maximized)
-		wwin->flags.maximized = MAX_MAXIMUS;
 
 	wWindowConstrainSize(wwin, &new_width, &new_height);
 
@@ -1033,10 +1035,45 @@ void wUnmaximizeWindow(WWindow *wwin)
 
 	wwin->flags.maximized = 0;
 	wwin->flags.old_maximized = 0;
+	/* give back the resizebar and the border that a maximized window doesn't have */
+	wWindowConfigureBorders(wwin);
 	wWindowConfigure(wwin, x, y, w, h);
 	wWindowSynthConfigureNotify(wwin);
 
 	WMPostNotificationName(WMNChangedState, wwin, "maximize");
+}
+
+/*
+ * The window was moved or resized by another way than (un)maximizing it:
+ * forget the maximized state in the directions that are no longer filled.
+ *
+ * Returns True if the window got back the resizebar and the border that a
+ * fully maximized window doesn't have, which makes its frame bigger.
+ */
+Bool wWindowForgetMaximized(WWindow *wwin, Bool horizontal, Bool vertical)
+{
+	Bool was_bare = IS_FULLY_MAXIMIZED(wwin);
+	int old_state = wwin->flags.maximized;
+
+	if (horizontal)
+		wwin->flags.maximized &= ~(MAX_HORIZONTAL | MAX_TOPHALF | MAX_BOTTOMHALF | MAX_MAXIMUS | MAX_CENTRAL);
+	if (vertical)
+		wwin->flags.maximized &= ~(MAX_VERTICAL | MAX_LEFTHALF | MAX_RIGHTHALF | MAX_MAXIMUS | MAX_CENTRAL);
+
+	if (wwin->flags.maximized == old_state)
+		return False;
+
+	if (was_bare && !IS_FULLY_MAXIMIZED(wwin)) {
+		wWindowConfigureBorders(wwin);
+		wNETFrameExtents(wwin);
+	} else {
+		was_bare = False;
+	}
+
+	/* let the hints of the window and its menu follow the change */
+	WMPostNotificationName(WMNChangedState, wwin, "maximize");
+
+	return was_bare;
 }
 
 #ifdef USE_XINERAMA
