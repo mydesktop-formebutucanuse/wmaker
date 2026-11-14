@@ -1249,6 +1249,13 @@ WWindow *wManageWindow(WScreen *scr, Window window)
 			wwin->flags.omnipresent ^= 1;
 	}
 
+	/*
+	 * A window that can't be resized will not be maximized: don't let a
+	 * state asked by the client or saved earlier take its border away
+	 */
+	if (WFLAGP(wwin, no_resizable))
+		wwin->flags.maximized = 0;
+
 	/* Create frame, borders and do reparenting */
 	foo = WFF_LEFT_BUTTON | WFF_RIGHT_BUTTON;
 #ifdef XKB_BUTTON_HINT

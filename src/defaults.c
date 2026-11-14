@@ -1046,6 +1046,9 @@ WDDomain *wDefaultsInitDomain(const char *domain, Bool requireDictionary)
 	db->domain_name = domain;
 	db->path = wdefaultspathfordomain(domain);
 
+	/* without a file of the user, any file created later is newer */
+	memset(&stbuf, 0, sizeof(stbuf));
+
 	if (stat(db->path, &stbuf) >= 0) {
 		db->dictionary = WMReadPropListFromFile(db->path);
 		if (db->dictionary) {

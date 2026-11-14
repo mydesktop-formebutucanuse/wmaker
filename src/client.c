@@ -238,10 +238,8 @@ void wClientConfigure(WWindow * wwin, XConfigureRequestEvent * xcre)
 		if (!(xcre->value_mask & (CWX | CWY | CWWidth | CWHeight)))
 			return;
 
-		if (nwidth != wwin->old_geometry.width)
-			wwin->flags.maximized &= ~(MAX_HORIZONTAL | MAX_TOPHALF | MAX_BOTTOMHALF | MAX_MAXIMUS | MAX_CENTRAL);
-		if (nheight != wwin->old_geometry.height)
-			wwin->flags.maximized &= ~(MAX_VERTICAL | MAX_LEFTHALF | MAX_RIGHTHALF | MAX_MAXIMUS | MAX_CENTRAL);
+		wWindowForgetMaximized(wwin, nwidth != wwin->old_geometry.width,
+				       nheight != wwin->old_geometry.height);
 
 		wWindowConstrainSize(wwin, (unsigned int *)&nwidth, (unsigned int *)&nheight);
 

@@ -60,6 +60,7 @@ void wUnselectWindows(WScreen *scr);
 
 void wMaximizeWindow(WWindow *wwin, int directions, int head);
 void wUnmaximizeWindow(WWindow *wwin);
+Bool wWindowForgetMaximized(WWindow *wwin, Bool horizontal, Bool vertical);
 void handleMaximize(WWindow *wwin, int directions);
 
 void wHideAll(WScreen *src);
