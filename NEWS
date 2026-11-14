@@ -16,6 +16,26 @@ The windows maximized in one direction only, in a half or a quarter of the
 screen, or with Maximus keep their decorations.
 
 
+Saving the attributes of windows
+--------------------------------
+
+The Save button of the Attributes panel lost settings in a few cases, which
+are fixed:
+
+  - an attribute that the application asks for by itself (no titlebar or no
+    resizebar from its hints, for example) can be turned off for good: the
+    choice was applied to the window but it was not saved.
+  - saving under another name than the one of the application ("Defaults for
+    all windows", or the class alone) no longer deletes what was saved for
+    the name of the application.
+  - with "Defaults for all windows", the attributes of the Application
+    Specific page are saved for all windows too, and an attribute that the
+    system-wide configuration turns on, like the shared application icon,
+    can be turned off.
+  - a WMWindowAttributes file changed by other means while Window Maker runs
+    is read again even if there was no such file when Window Maker started.
+
+
 Video recording of a portion of the screen
 ------------------------------------------
 

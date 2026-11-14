@@ -27,6 +27,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <strings.h>
+#include <limits.h>
+#include <sys/stat.h>
 
 #include "WindowMaker.h"
 #include "screen.h"
@@ -521,21 +523,19 @@ static int showIconFor(WMScreen *scrPtr, InspectorPanel *panel, const char *wm_i
  * if it's different from the defaults.
  * Defaults means either defaults database, or attributes saved
  * for the default window "*". This is to let one revert options that are
- * global because they were saved for all windows ("*"). */
+ * global because they were saved for all windows ("*").
+ * When saving for the default window itself, the defaults are the ones of
+ * the system-wide configuration, which the saved ones are merged with. */
 static int
-insertAttribute(WMPropList *dict, WMPropList *window, WMPropList *attr, WMPropList *value, int flags)
+insertAttribute(WMPropList *defaults, WMPropList *window, WMPropList *attr, WMPropList *value, int flags)
 {
-	WMPropList *def_win, *def_value = NULL;
+	WMPropList *def_value = NULL;
 	int update = 0, modified = 0;
 
-	if (!(flags & UPDATE_DEFAULTS) && dict) {
-		def_win = WMGetFromPLDictionary(dict, AnyWindow);
-		if (def_win != NULL)
-			def_value = WMGetFromPLDictionary(def_win, attr);
-	}
+	if (defaults)
+		def_value = WMGetFromPLDictionary(defaults, attr);
 
-	/* If we could not find defaults in database, fall to hardcoded values.
-	 * Also this is true if we save defaults for all windows */
+	/* If we could not find defaults in database, fall to hardcoded values. */
 	if (!def_value)
 		def_value = ((flags & IS_BOOLEAN) != 0) ? No : EmptyString;
 
@@ -552,15 +552,84 @@ insertAttribute(WMPropList *dict, WMPropList *window, WMPropList *attr, WMPropLi
 	return modified;
 }
 
+/*
+ * Same for a flag of the window. The client may ask for the flag on its own
+ * (with the Motif hints, for example), and a saved value is the only thing
+ * that overrides it: the flag is saved when it is turned off against the
+ * client too, or the choice would be lost at the next launch.
+ */
+static int
+insertFlag(WMPropList *defaults, WMPropList *window, WMPropList *attr, Bool selected,
+	   const WWindowAttributes *client_flags, const WWindowAttributes *flag, int flags)
+{
+	if (!(flags & UPDATE_DEFAULTS) && !selected && get_attr_flag(client_flags, flag)) {
+		WMPutInPLDictionary(window, attr, No);
+		return 1;
+	}
+
+	return insertAttribute(defaults, window, attr, selected ? Yes : No, flags);
+}
+
+/*
+ * Saves the attributes of the application under the name of its main window,
+ * when the attributes of the window are saved under another name. What was
+ * saved for the windows that have the name of the main window is kept.
+ */
+static void saveAppAttributes(WMPropList *dict, WMPropList *key, WMPropList *appDic, Bool clear_icon)
+{
+	WMPropList *saved, *entry;
+	int i;
+
+	saved = WMGetFromPLDictionary(dict, key);
+	if (saved && WMIsPLDictionary(saved)) {
+		entry = WMDeepCopyPropList(saved);
+		for (i = 0; i < wlengthof(application_attr); i++)
+			WMRemoveFromPLDictionary(entry, pl_appattrib[i]);
+		if (clear_icon)
+			WMRemoveFromPLDictionary(entry, AIcon);
+		WMMergePLDictionaries(entry, appDic, True);
+	} else {
+		entry = WMRetainPropList(appDic);
+	}
+
+	WMRemoveFromPLDictionary(dict, key);
+	if (WMGetPropListItemCount(entry) > 0)
+		WMPutInPLDictionary(dict, key, entry);
+	WMReleasePropList(entry);
+}
+
+/*
+ * The attributes that the system-wide configuration gives to all windows.
+ * The dictionary read is returned too, to be released after use.
+ */
+static WMPropList *systemDefaults(WDDomain *db, WMPropList **shared_dict)
+{
+	char path[PATH_MAX];
+	struct stat stbuf;
+	WMPropList *defaults = NULL;
+
+	*shared_dict = NULL;
+	snprintf(path, sizeof(path), "%s/%s", PKGCONFDIR, db->domain_name);
+	if (stat(path, &stbuf) >= 0)
+		*shared_dict = WMReadPropListFromFile(path);
+
+	if (*shared_dict && WMIsPLDictionary(*shared_dict))
+		defaults = WMGetFromPLDictionary(*shared_dict, AnyWindow);
+
+	return defaults;
+}
+
 static void saveSettings(WMWidget *button, void *client_data)
 {
 	InspectorPanel *panel = (InspectorPanel *) client_data;
 	WWindow *wwin = panel->inspected;
 	WDDomain *db = w_global.domain.window_attr;
-	WMPropList *dict = NULL;
+	WApplication *wapp = wApplicationOf(wwin->main_window);
+	WMPropList *dict = NULL, *defaults, *shared_dict = NULL;
 	WMPropList *winDic, *appDic, *value, *value1, *key = NULL, *key2;
 	char *icon_file, *buf1, *buf2;
 	int flags = 0, i = 0, different = 0, different2 = 0;
+	Bool has_icon = False, same_name;
 
 	/* Save will apply the changes and save them */
 	applySettings(panel->applyBtn, panel);
@@ -593,10 +662,21 @@ static void saveSettings(WMWidget *button, void *client_data)
 		}
 	}
 
-	if (showIconFor(WMWidgetScreen(button), panel, NULL, NULL, USE_TEXT_FIELD) < 0)
+	if (showIconFor(WMWidgetScreen(button), panel, NULL, NULL, USE_TEXT_FIELD) < 0) {
+		WMReleasePropList(key);
 		return;
+	}
 
 	WMPLSetCaseSensitive(True);
+
+	/* What the windows get when nothing is saved for them */
+	if (flags & UPDATE_DEFAULTS)
+		defaults = systemDefaults(db, &shared_dict);
+	else
+		defaults = WMGetFromPLDictionary(dict, AnyWindow);
+
+	if (defaults && !WMIsPLDictionary(defaults))
+		defaults = NULL;
 
 	winDic = WMCreatePLDictionary(NULL, NULL);
 	appDic = WMCreatePLDictionary(NULL, NULL);
@@ -606,7 +686,7 @@ static void saveSettings(WMWidget *button, void *client_data)
 	buf1 = wmalloc(4);
 	snprintf(buf1, 4, "%s", (WMGetButtonSelected(panel->alwChk) != 0) ? "Yes" : "No");
 	value1 = WMCreatePLString(buf1);
-	different |= insertAttribute(dict, winDic, AAlwaysUserIcon, value1, flags);
+	different |= insertAttribute(defaults, winDic, AAlwaysUserIcon, value1, flags);
 	WMReleasePropList(value1);
 	wfree(buf1);
 
@@ -614,9 +694,10 @@ static void saveSettings(WMWidget *button, void *client_data)
 	icon_file = WMGetTextFieldText(panel->fileText);
 	if (icon_file != NULL) {
 		if (icon_file[0] != '\0') {
+			has_icon = True;
 			value = WMCreatePLString(icon_file);
-			different |= insertAttribute(dict, winDic, AIcon, value, flags);
-			different2 |= insertAttribute(dict, appDic, AIcon, value, flags);
+			different |= insertAttribute(defaults, winDic, AIcon, value, flags);
+			different2 |= insertAttribute(defaults, appDic, AIcon, value, flags);
 			WMReleasePropList(value);
 		}
 		wfree(icon_file);
@@ -625,71 +706,76 @@ static void saveSettings(WMWidget *button, void *client_data)
 	i = WMGetPopUpButtonSelectedItem(panel->wsP) - 1;
 	if (i >= 0 && i < panel->frame->screen_ptr->workspace_count) {
 		value = WMCreatePLString(panel->frame->screen_ptr->workspaces[i]->name);
-		different |= insertAttribute(dict, winDic, AStartWorkspace, value, flags);
+		different |= insertAttribute(defaults, winDic, AStartWorkspace, value, flags);
 		WMReleasePropList(value);
 	}
 
 	flags |= IS_BOOLEAN;
 
 	/* Attributes... --> Window Attributes */
-	for (i = 0; i < wlengthof(window_attribute); i++) {
-		value = (WMGetButtonSelected(panel->attrChk[i]) != 0) ? Yes : No;
-		different |= insertAttribute(dict, winDic, pl_attribute[i], value, flags);
-	}
+	for (i = 0; i < wlengthof(window_attribute); i++)
+		different |= insertFlag(defaults, winDic, pl_attribute[i],
+					WMGetButtonSelected(panel->attrChk[i]) != 0,
+					&wwin->client_flags, &window_attribute[i].flag, flags);
 
 	/* Attributes... --> Advanced Options */
-	for (i = 0; i < wlengthof(advanced_option); i++) {
-		value = (WMGetButtonSelected(panel->moreChk[i]) != 0) ? Yes : No;
-		different |= insertAttribute(dict, winDic, pl_advoptions[i], value, flags);
-	}
+	for (i = 0; i < wlengthof(advanced_option); i++)
+		different |= insertFlag(defaults, winDic, pl_advoptions[i],
+					WMGetButtonSelected(panel->moreChk[i]) != 0,
+					&wwin->client_flags, &advanced_option[i].flag, flags);
 
 	/* Attributes... --> Application Specific */
-	if (wwin->main_window != None && wApplicationOf(wwin->main_window) != NULL) {
-		for (i = 0; i < wlengthof(application_attr); i++) {
-			value = (WMGetButtonSelected(panel->appChk[i]) != 0) ? Yes : No;
-			different2 |= insertAttribute(dict, appDic, pl_appattrib[i], value, flags);
-		}
+	if (wwin->main_window != None && wapp != NULL) {
+		for (i = 0; i < wlengthof(application_attr); i++)
+			different2 |= insertFlag(defaults, appDic, pl_appattrib[i],
+						 WMGetButtonSelected(panel->appChk[i]) != 0,
+						 &wapp->main_window_desc->client_flags,
+						 &application_attr[i].flag, flags);
 	}
 
-	if (wwin->fake_group) {
+	/*
+	 * The attributes of the application go with the ones of the window when
+	 * they are saved for all windows, or under the name of the application.
+	 * Otherwise they are saved under the name of the application, where an
+	 * empty icon field only clears the icon that it was showing: the one of
+	 * a window that has the names of the application.
+	 */
+	key2 = NULL;
+	if (flags & UPDATE_DEFAULTS) {
+		/* no name of its own */
+	} else if (wwin->fake_group) {
 		key2 = WMCreatePLString(wwin->fake_group->identifier);
-		if (WMIsPropListEqualTo(key, key2)) {
-			WMMergePLDictionaries(winDic, appDic, True);
-			different |= different2;
-		} else {
-			WMRemoveFromPLDictionary(dict, key2);
-			if (different2)
-				WMPutInPLDictionary(dict, key2, appDic);
-		}
-		WMReleasePropList(key2);
-	} else if (wwin->main_window != wwin->client_win) {
-		WApplication *wapp = wApplicationOf(wwin->main_window);
+	} else if (wwin->main_window != wwin->client_win && wapp) {
+		buf2 = StrConcatDot(wapp->main_window_desc->wm_instance,
+				      wapp->main_window_desc->wm_class);
+		key2 = WMCreatePLString(buf2);
+		wfree(buf2);
+	}
 
-		if (wapp) {
-			buf2 = StrConcatDot(wapp->main_window_desc->wm_instance,
-					      wapp->main_window_desc->wm_class);
-			key2 = WMCreatePLString(buf2);
-			wfree(buf2);
+	if (key2 && !WMIsPropListEqualTo(key, key2)) {
+		buf2 = StrConcatDot(wwin->wm_instance, wwin->wm_class);
+		same_name = (strcmp(buf2, WMGetFromPLString(key2)) == 0);
+		wfree(buf2);
 
-			if (WMIsPropListEqualTo(key, key2)) {
-				WMMergePLDictionaries(winDic, appDic, True);
-				different |= different2;
-			} else {
-				WMRemoveFromPLDictionary(dict, key2);
-				if (different2)
-					WMPutInPLDictionary(dict, key2, appDic);
-			}
-			WMReleasePropList(key2);
-		}
-	} else {
+		saveAppAttributes(dict, key2, appDic, same_name && !has_icon);
+	} else if ((flags & UPDATE_DEFAULTS) || key2 || wwin->main_window == wwin->client_win) {
 		WMMergePLDictionaries(winDic, appDic, True);
 		different |= different2;
 	}
+	if (key2)
+		WMReleasePropList(key2);
 	WMReleasePropList(appDic);
 
 	WMRemoveFromPLDictionary(dict, key);
-	if (different)
+	if ((flags & UPDATE_DEFAULTS) && defaults) {
+		/* the database has them merged with the ones of the system-wide configuration */
+		value = WMDeepCopyPropList(defaults);
+		WMMergePLDictionaries(value, winDic, True);
+		WMPutInPLDictionary(dict, key, value);
+		WMReleasePropList(value);
+	} else if (different) {
 		WMPutInPLDictionary(dict, key, winDic);
+	}
 
 	WMReleasePropList(key);
 	WMReleasePropList(winDic);
@@ -697,6 +783,8 @@ static void saveSettings(WMWidget *button, void *client_data)
 	UpdateDomainFile(db);
 
 	/* clean up */
+	if (shared_dict)
+		WMReleasePropList(shared_dict);
 	WMPLSetCaseSensitive(False);
 }
 
