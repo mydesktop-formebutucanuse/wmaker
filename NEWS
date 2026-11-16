@@ -76,7 +76,11 @@ height of the notch is now handled by Window Maker itself:
   - maximized windows and the windows that are placed automatically stay
     below the strip, and _NET_WORKAREA does not include it;
   - fullscreen windows start below the strip, which is plain black while one
-    is shown.
+    is shown, a video for instance. Window Maker blackens the strip itself:
+    it is black also where the shade is not drawn (see below). A window
+    whose contents cover the whole head without being in the fullscreen
+    state, as some players and games do, is taken for a fullscreen one: the
+    strip is black over it too, instead of the shade.
 
 The notch is found from the size of the head: such a panel is higher than
 16:10 by the height of the notch. Two options of the WindowMaker domain can

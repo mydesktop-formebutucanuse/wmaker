@@ -21,6 +21,8 @@
 
 #include "screen.h"
 
+struct WWindow;
+
 /* Starts to handle the camera notch of the screen, if it has one */
 void wNotchInit(WScreen *scr);
 
@@ -32,6 +34,9 @@ void wNotchReserveArea(WScreen *scr, int head, WArea *area);
 
 /* Takes the strip of the notch out of the rectangle of a fullscreen window */
 void wNotchClipRect(WScreen *scr, WMRect *rect);
+
+/* The window was moved or resized: it may cover the head of the notch, or not anymore */
+void wNotchWindowMoved(struct WWindow *wwin);
 
 /* Stops to handle the notch, when leaving the screen */
 void wNotchCleanup(WScreen *scr);

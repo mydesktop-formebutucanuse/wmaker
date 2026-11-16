@@ -329,10 +329,14 @@ typedef struct _WScreen {
         WMRect strip;		       /* strip of the screen at its height */
         int fade;		       /* rows below the strip where the shade ends */
         long data[6];	       /* what the helper was told */
+        struct _WCoreWindow *cover;    /* black window of the strip, NULL until
+                                        * a fullscreen window is shown */
+        WMRect cover_strip;	       /* where that window is */
         int helper_fd;	       /* pipe that keeps the helper running */
         pid_t helper_pid;
         unsigned int initialized:1;
         unsigned int covered:1;	       /* a fullscreen window is shown on the head */
+        unsigned int cover_mapped:1;   /* the black window of the strip is shown */
         unsigned int published:1;      /* the property is set on the root window */
         unsigned int check_pending:1;  /* the fullscreen windows are to be looked at */
         unsigned int helper_failed:1;  /* the helper is not to be started again */
