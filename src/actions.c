@@ -1135,6 +1135,9 @@ void wFullscreenWindow(WWindow *wwin)
 
 	wwin->flags.fullscreen = True;
 
+	/* before the window is made large, so its copy is never made that large */
+	wWindowUpdateBackingStore(wwin);
+
 	wWindowConfigureBorders(wwin);
 
 	ChangeStackingLevel(wwin->frame->core, WMFullscreenLevel);
@@ -1176,6 +1179,9 @@ void wUnfullscreenWindow(WWindow *wwin)
 			 wwin->bfs_geometry.width, wwin->bfs_geometry.height);
 
 	wWindowConfigureBorders(wwin);
+
+	/* once the window has its size back */
+	wWindowUpdateBackingStore(wwin);
 	/*
 	   // seems unnecessary, but also harmless (doesn't generate flicker) -Dan
 	   wFrameWindowPaint(wwin->frame);

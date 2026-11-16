@@ -2096,10 +2096,23 @@ void wNETFrameExtents(WWindow *wwin)
 		extents[3] += wwin->screen_ptr->frame_border_width;
 	}
 
+	/*
+	 * Every configuration of the window comes here, each step of a move as
+	 * well. Setting the property again is a PropertyNotify for the
+	 * application and one for us, which has us ask the X server about the
+	 * window and wait for its answer: set it only when it changes.
+	 */
+	if (wwin->flags.net_frame_extents_set
+	    && memcmp(wwin->net_frame_extents, extents, sizeof(extents)) == 0)
+		return;
+
 	XChangeProperty(dpy, wwin->client_win, net_frame_extents, XA_CARDINAL, 32, PropModeReplace, (unsigned char *) extents, 4);
+	memcpy(wwin->net_frame_extents, extents, sizeof(extents));
+	wwin->flags.net_frame_extents_set = 1;
 }
 
 void wNETCleanupFrameExtents(WWindow *wwin)
 {
 	XDeleteProperty(dpy, wwin->client_win, net_frame_extents);
+	wwin->flags.net_frame_extents_set = 0;
 }

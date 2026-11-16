@@ -63,6 +63,9 @@ static struct expert_option {
 	{ N_("Use SaveUnder in window frames, icons, menus and other objects."),
 	  /* default: */ False, OPTION_WMAKER, "UseSaveUnders" },
 
+	{ N_("Let the X server keep window contents, to redraw what moved windows uncover."),
+	  /* default: */ True, OPTION_WMAKER, "UseBackingStore" },
+
 	{ N_("Disable confirmation panel for the Kill command."),
 	  /* default: */ False, OPTION_WMAKER, "DontConfirmKill" },
 

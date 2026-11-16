@@ -290,7 +290,10 @@ typedef struct WWindow {
 		unsigned int net_handle_icon:1;
 		unsigned int net_show_desktop:1;
 		unsigned int net_has_title:1;	/* use netwm version of WM_NAME */
+		unsigned int net_frame_extents_set:1;	/* net_frame_extents is on the window */
 	} flags;				/* state of the window */
+
+	long net_frame_extents[4];		/* _NET_FRAME_EXTENTS as last set */
 
 	struct WIcon *icon;			/* Window icon when miminized
 						 * else is NULL! */
@@ -366,6 +369,7 @@ void wWindowConfigure(WWindow *wwin, int req_x, int req_y,
 
 void wWindowMove(WWindow *wwin, int req_x, int req_y);
 void wWindowSnapToHead(WWindow *wwin);
+void wWindowUpdateBackingStore(WWindow *wwin);
 
 void wWindowSynthConfigureNotify(WWindow *wwin);
 
