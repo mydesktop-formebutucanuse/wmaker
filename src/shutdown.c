@@ -37,7 +37,6 @@
 #include "notch.h"
 #include "colormap.h"
 #include "screen.h"
-#include "screenrec.h"
 #include "shutdown.h"
 
 
@@ -56,9 +55,6 @@ static void wipeDesktop(WScreen * scr);
 void Shutdown(WShutdownMode mode)
 {
 	int i;
-
-	/* let ffmpeg finish the video file, it would keep recording otherwise */
-	wScreenRecordFinish();
 
 	switch (mode) {
 	case WSLogoutMode:
