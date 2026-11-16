@@ -58,6 +58,7 @@
 #include "icon.h"
 #include "properties.h"
 #include "actions.h"
+#include "notch.h"
 #include "client.h"
 #include "colormap.h"
 #include "keybind.h"
@@ -2350,6 +2351,7 @@ void wWindowConfigure(WWindow *wwin, int req_x, int req_y, int req_width, int re
 		wWindowSynthConfigureNotify(wwin);
 
 	wNETFrameExtents(wwin);
+	wNotchWindowMoved(wwin);
 
 	XFlush(dpy);
 }
@@ -2388,6 +2390,8 @@ void wWindowMove(WWindow *wwin, int req_x, int req_y)
 	if (synth_notify)
 		wWindowSynthConfigureNotify(wwin);
 #endif
+
+	wNotchWindowMoved(wwin);
 }
 
 /* Move the window to the nearest on-screen position if its stored

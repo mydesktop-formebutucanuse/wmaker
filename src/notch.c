@@ -34,6 +34,10 @@
  * NotchFade = 0 the strip is kept free but not shaded: the helper is not
  * started, or is stopped.
  *
+ * While a fullscreen window is shown on the head, a video for instance, the
+ * strip is plain black instead. This does not need the helper, which may not
+ * be there: a black window is put over the strip, above all the others.
+ *
  * The helper is told where the notch is with the _WINDOWMAKER_NOTCH property
  * of the root window, which is a list of 6 CARDINAL:
  *   x, y, width, height   strip of the screen at the height of the notch
@@ -59,13 +63,23 @@
 #include "screen.h"
 #include "window.h"
 #include "framewin.h"
+#include "actions.h"
 #include "xinerama.h"
 #include "event.h"
 #include "main.h"
+#include "stacking.h"
+#include "wcore.h"
 #include "notch.h"
+
+#ifdef USE_XSHAPE
+#include <X11/extensions/shape.h>
+#endif
 
 /* The share of the height of the head that the strip or the fade may take */
 #define NOTCH_MAX_SHARE 4
+
+/* The black window of the strip is above the menus and the panels */
+#define NOTCH_COVER_LEVEL (WMScreensaverLevel - 1)
 
 static Atom notch_atom = None;
 
@@ -134,32 +148,112 @@ static void notch_find(WScreen *scr)
 	scr->notch.fade = fade;
 }
 
+/*
+ * Tells if the window is shown as a fullscreen one on the head of the notch
+ *
+ * Besides the windows that are in the fullscreen state, these are the
+ * windows whose contents cover the whole head, as some programs do by
+ * themselves instead of asking for that state: the shade would lie over
+ * their top rows. A window that has its titlebar in the head is not one.
+ */
+static Bool notch_window_covers(WScreen *scr, WWindow *wwin)
+{
+	WMRect *strip = &scr->notch.strip;
+	WMRect head;
+	int x, y, right, bottom, border;
+
+	if (!wwin->flags.mapped || wwin->frame == NULL)
+		return False;
+
+	border = HAS_BORDER(wwin) ? scr->frame_border_width : 0;
+	x = wwin->frame_x;
+	y = wwin->frame_y;
+	right = x + (int)wwin->frame->core->width + 2 * border;
+	bottom = y + (int)wwin->frame->core->height + 2 * border;
+
+	if (wwin->flags.fullscreen) {
+		int strip_bottom = strip->pos.y + (int)strip->size.height;
+
+		/* A fullscreen window of that head starts at the bottom of the strip */
+		return x < strip->pos.x + (int)strip->size.width && right > strip->pos.x &&
+		       y <= strip_bottom && bottom > strip_bottom;
+	}
+
+	/* The windows of the desktop cover the head too, below the others */
+	if (wwin->frame->core->stacking->window_level < WMNormalLevel)
+		return False;
+
+	head = wGetRectForHead(scr, scr->notch.head);
+	return x <= head.pos.x && y + wwin->frame->top_width <= head.pos.y &&
+	       right >= head.pos.x + (int)head.size.width &&
+	       bottom - wwin->frame->bottom_width >= head.pos.y + (int)head.size.height;
+}
+
 /* Tells if a fullscreen window is shown on the head of the notch */
 static Bool notch_is_covered(WScreen *scr)
 {
-	WMRect *strip = &scr->notch.strip;
-	int bottom = strip->pos.y + (int)strip->size.height;
 	WWindow *wwin;
 
 	if (scr->notch.head < 0)
 		return False;
 
 	for (wwin = scr->focused_window; wwin != NULL; wwin = wwin->prev) {
-		WCoreWindow *core;
-
-		if (!wwin->flags.fullscreen || !wwin->flags.mapped || wwin->frame == NULL)
-			continue;
-
-		/* A fullscreen window of that head starts at the bottom of the strip */
-		core = wwin->frame->core;
-		if (wwin->frame_x < strip->pos.x + (int)strip->size.width &&
-		    wwin->frame_x + (int)core->width > strip->pos.x &&
-		    wwin->frame_y <= bottom &&
-		    wwin->frame_y + (int)core->height > bottom)
+		if (notch_window_covers(scr, wwin))
 			return True;
 	}
 
 	return False;
+}
+
+/*
+ * Shows the strip plain black while a fullscreen window is shown
+ *
+ * The helper does it as well, in its window that is above everything, but
+ * it is not always running: the strip would show the desktop above the
+ * fullscreen window.
+ */
+static void notch_cover_update(WScreen *scr)
+{
+	WMRect *strip = &scr->notch.strip;
+	WCoreWindow *core = scr->notch.cover;
+
+	if (scr->notch.head < 0 || !scr->notch.covered) {
+		if (scr->notch.cover_mapped) {
+			XUnmapWindow(dpy, core->window);
+			scr->notch.cover_mapped = 0;
+		}
+		return;
+	}
+
+	if (core == NULL) {
+		core = wCoreCreateTopLevel(scr, strip->pos.x, strip->pos.y, strip->size.width, strip->size.height,
+		                           0, scr->w_depth, scr->w_visual, scr->w_colormap, scr->black_pixel);
+		XSetWindowBackground(dpy, core->window, scr->black_pixel);
+
+#if defined(USE_XSHAPE) && defined(ShapeInput)
+		/* The pointer goes through it, to what it hides */
+		if (w_global.xext.shape.supported)
+			XShapeCombineRectangles(dpy, core->window, ShapeInput, 0, 0, NULL, 0, ShapeSet, Unsorted);
+#endif
+
+		core->stacking = wmalloc(sizeof(WStacking));
+		core->stacking->above = NULL;
+		core->stacking->under = NULL;
+		core->stacking->window_level = NOTCH_COVER_LEVEL;
+		core->stacking->child_of = NULL;
+		AddToStackList(core);
+
+		scr->notch.cover = core;
+		scr->notch.cover_strip = *strip;
+	} else if (memcmp(&scr->notch.cover_strip, strip, sizeof(*strip)) != 0) {
+		wCoreConfigure(core, strip->pos.x, strip->pos.y, strip->size.width, strip->size.height);
+		scr->notch.cover_strip = *strip;
+	}
+
+	if (!scr->notch.cover_mapped) {
+		XMapWindow(dpy, core->window);
+		scr->notch.cover_mapped = 1;
+	}
 }
 
 /* Tells the helper where the notch is */
@@ -295,6 +389,17 @@ static void notch_check_covered(void *cdata)
 
 	scr->notch.covered = covered;
 	notch_publish(scr);
+	notch_cover_update(scr);
+}
+
+/* The windows are to be looked at, when there is nothing else to do */
+static void notch_schedule_check(WScreen *scr)
+{
+	if (!scr->notch.initialized || scr->notch.head < 0 || scr->notch.check_pending)
+		return;
+
+	scr->notch.check_pending = 1;
+	WMAddIdleHandler(notch_check_covered, scr);
 }
 
 /*
@@ -310,11 +415,12 @@ static void notch_observer(void *self, WMNotification *notif)
 	/* Parameter not used, but tell the compiler that it is ok */
 	(void) notif;
 
-	if (!scr->notch.initialized || scr->notch.head < 0 || scr->notch.check_pending)
-		return;
+	notch_schedule_check(scr);
+}
 
-	scr->notch.check_pending = 1;
-	WMAddIdleHandler(notch_check_covered, scr);
+void wNotchWindowMoved(WWindow *wwin)
+{
+	notch_schedule_check(wwin->screen_ptr);
 }
 
 void wNotchUpdate(WScreen *scr)
@@ -325,6 +431,7 @@ void wNotchUpdate(WScreen *scr)
 	notch_find(scr);
 	scr->notch.covered = notch_is_covered(scr);
 	notch_publish(scr);
+	notch_cover_update(scr);
 
 #ifdef USE_XCOMPOSITE
 	/* With NotchFade = 0 the strip is kept free, but not shaded */
@@ -399,6 +506,13 @@ void wNotchCleanup(WScreen *scr)
 	scr->notch.head = -1;
 	memset(&scr->notch.strip, 0, sizeof(scr->notch.strip));
 	notch_publish(scr);
+
+	if (scr->notch.cover != NULL) {
+		RemoveFromStackList(scr->notch.cover);
+		wCoreDestroy(scr->notch.cover);
+		scr->notch.cover = NULL;
+		scr->notch.cover_mapped = 0;
+	}
 
 	/* The observers stay, they do nothing from now on */
 	scr->notch.initialized = 0;
