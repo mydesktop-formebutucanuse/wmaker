@@ -73,8 +73,6 @@ wmaker_SOURCES = 	\
 	rootmenu.h \
 	screen.c \
 	screen.h \
-	screenrec.c \
-	screenrec.h \
 	session.h \
 	session.c \
 	shutdown.h \

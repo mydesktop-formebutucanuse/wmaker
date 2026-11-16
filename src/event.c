@@ -70,7 +70,6 @@
 #include "rootmenu.h"
 #include "colormap.h"
 #include "screen.h"
-#include "screenrec.h"
 #include "shutdown.h"
 #include "misc.h"
 #include "event.h"
@@ -1987,12 +1986,6 @@ static void dispatchWKBDCommand(int command, WScreen *scr, WWindow *wwin, XEvent
 	case WKBD_PRINTP:
 	{
 		ScreenCapture(scr, PRINT_PARTIAL);
-		break;
-	}
-
-	case WKBD_RECORDP:
-	{
-		wScreenRecordToggle(scr);
 		break;
 	}
 
