@@ -212,19 +212,48 @@ static void workspace_map_show(WWorkspaceMap *wsmap)
 	workspace_map_slide(wsmap);
 }
 
+/*
+ * The title texture, painted by the X server where it can (see
+ * wPaintTexture()). The textures with an image are rendered by Window Maker
+ * as before: the transparent parts of the image leave holes.
+ */
 static WMPixmap *get_frame_background_color(WWorkspaceMap *wsmap, unsigned int width, unsigned int height, int type)
 {
+	WScreen *scr = wsmap->scr;
+	WTexture *texture = scr->window_title_texture[type];
 	RImage *img;
 	WMPixmap *pix;
 
-	if (!wsmap->scr->window_title_texture[type])
+	if (!texture)
 		return NULL;
 
-	img = wTextureRenderImage(wsmap->scr->window_title_texture[type], width, height, WREL_FLAT);
+	switch (texture->any.type) {
+	case WTEX_SOLID:
+	case WTEX_HGRADIENT:
+	case WTEX_VGRADIENT:
+	case WTEX_DGRADIENT:
+	case WTEX_MHGRADIENT:
+	case WTEX_MVGRADIENT:
+	case WTEX_MDGRADIENT:
+	case WTEX_IGRADIENT:
+	{
+		WPaint paint;
+		Pixmap pixmap;
+
+		if (!wPaintTexture(&paint, scr, texture, width, height, WREL_FLAT))
+			return NULL;
+		pixmap = wPaintFinish(&paint);
+		if (pixmap == None)
+			return NULL;
+		return WMCreatePixmapFromXPixmaps(scr->wmscreen, pixmap, None, width, height, scr->rcontext->depth);
+	}
+	}
+
+	img = wTextureRenderImage(texture, width, height, WREL_FLAT);
 	if (!img)
 		return NULL;
 
-	pix = WMCreatePixmapFromRImage(wsmap->scr->wmscreen, img, 128);
+	pix = WMCreatePixmapFromRImage(scr->wmscreen, img, 128);
 	RReleaseImage(img);
 
 	return pix;
