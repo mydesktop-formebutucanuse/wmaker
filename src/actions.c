@@ -1523,11 +1523,9 @@ void wIconifyWindow(WWindow *wwin)
 		wwin->icon = icon_create_for_wwindow(wwin);
 		wwin->icon->mapped = 1;
 
-		/* extract the window screenshot every time, as the option can be enable anytime */
+		/* make the preview every time, as the option can be enabled anytime */
 		if (wwin->client_win && wwin->flags.mapped) {
-			RImage *mini_preview;
-			XImage *pimg;
-			unsigned int w, h;
+			int w, h;
 			int x, y;
 			Window baz;
 
@@ -1543,27 +1541,7 @@ void wIconifyWindow(WWindow *wwin)
 			if (y - attribs.y + attribs.height > wwin->screen_ptr->scr_height)
 				h = wwin->screen_ptr->scr_height - y + attribs.y;
 
-			pimg = XGetImage(dpy, wwin->client_win, 0, 0, w, h, AllPlanes, ZPixmap);
-			if (pimg) {
-				mini_preview = RCreateImageFromXImage(wwin->screen_ptr->rcontext, pimg, NULL);
-				XDestroyImage(pimg);
-
-				if (mini_preview) {
-					set_icon_minipreview(wwin->icon, mini_preview);
-					RReleaseImage(mini_preview);
-				} else {
-					const char *title;
-					char title_buf[32];
-
-					if (wwin->frame->title) {
-						title = wwin->frame->title;
-					} else {
-						snprintf(title_buf, sizeof(title_buf), "(id=0x%lx)", wwin->client_win);
-						title = title_buf;
-					}
-					wwarning(_("creation of mini-preview failed for window \"%s\""), title);
-				}
-			}
+			wIconMakeMiniPreview(wwin->icon, wwin->client_win, attribs.visual, w, h);
 		}
 	}
 

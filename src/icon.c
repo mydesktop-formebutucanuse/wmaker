@@ -22,6 +22,7 @@
 
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
+#include <X11/extensions/Xrender.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdint.h>
@@ -700,21 +701,132 @@ static void set_icon_image(WIcon *icon, RImage *image, const char *path, Bool cl
 	icon->client_image = client;
 }
 
-void set_icon_minipreview(WIcon *icon, RImage *image)
+/*
+ * One step of the scaling of a mini-preview: draws the src_w x src_h top left
+ * part of src scaled to a new dst_w x dst_h pixmap.
+ *
+ * A side that shrinks with a spread is sampled twice per pixel with the
+ * bilinear filter, spread times the scale factor on both sides of its
+ * centre: when it is halved, a spread of 0.375 averages 4 pixels weighted
+ * 1 3 3 1, where a single sample averages 2 and leaves moire with fine
+ * patterns, like text. A smaller spread blurs less, and each sample is a
+ * composition of the whole picture.
+ */
+static Picture scaleStep(Picture src, int src_w, int src_h, Pixmap *dst_pixmap,
+                         int dst_w, int dst_h, double spread_x, double spread_y,
+                         XRenderPictFormat *format, int depth, Drawable root)
 {
-	Pixmap tmp;
-	RImage *scaled_mini_preview;
-	WScreen *scr = icon->core->screen_ptr;
+	double fx = (double)src_w / dst_w, fy = (double)src_h / dst_h;
+	double dx = fx > 1 ? spread_x * fx : 0, dy = fy > 1 ? spread_y * fy : 0;
+	int nx = dx > 0 ? 2 : 1, ny = dy > 0 ? 2 : 1;
+	XTransform xform = {{
+		{ XDoubleToFixed(fx), 0, 0 },
+		{ 0, XDoubleToFixed(fy), 0 },
+		{ 0, 0, XDoubleToFixed(1.0) }
+	}};
+	XRenderPictureAttributes pa;
+	Picture dst, weight = None;
+	int i, j;
 
-	scaled_mini_preview = RSmoothScaleImage(image, wPreferences.minipreview_size - 2 * MINIPREVIEW_BORDER,
-	                                  wPreferences.minipreview_size - 2 * MINIPREVIEW_BORDER);
+	*dst_pixmap = XCreatePixmap(dpy, root, dst_w, dst_h, depth);
+	pa.repeat = RepeatPad;
+	dst = XRenderCreatePicture(dpy, *dst_pixmap, format, CPRepeat, &pa);
 
-	if (RConvertImage(scr->rcontext, scaled_mini_preview, &tmp)) {
-		if (icon->mini_preview != None)
-			XFreePixmap(dpy, icon->mini_preview);
-		icon->mini_preview = tmp;
+	if (nx * ny > 1) {
+		XRenderColor color = { 0, 0, 0, 0x10000 / (nx * ny) };
+
+		weight = XRenderCreateSolidFill(dpy, &color);
 	}
-	RReleaseImage(scaled_mini_preview);
+
+	XRenderSetPictureFilter(dpy, src, FilterBilinear, NULL, 0);
+	for (i = 0; i < nx; i++) {
+		for (j = 0; j < ny; j++) {
+			xform.matrix[0][2] = XDoubleToFixed(i ? dx : -dx);
+			xform.matrix[1][2] = XDoubleToFixed(j ? dy : -dy);
+			XRenderSetPictureTransform(dpy, src, &xform);
+			XRenderComposite(dpy, (i || j) ? PictOpAdd : PictOpSrc, src, weight, dst,
+			                 0, 0, 0, 0, 0, 0, dst_w, dst_h);
+		}
+	}
+
+	if (weight != None)
+		XRenderFreePicture(dpy, weight);
+
+	return dst;
+}
+
+/*
+ * Make the mini-preview of a window from what it shows.
+ *
+ * The X server scales it down with the Render extension: nothing is read
+ * back from the server (from the memory of the GPU with an accelerated
+ * driver) nor scaled by Window Maker, so it is cheap enough to be made for
+ * every window miniaturized, and the previews are there when the balloons
+ * are enabled after the windows were miniaturized.
+ *
+ * Each side at least twice as large as the preview is halved, as long as it
+ * can be, then the last step scales by less than 2 to the size of the
+ * preview: see scaleStep() for the filtering. While a side stays at least 3
+ * times as large as the preview, it is halved with a single sample: what
+ * that lets through is still filtered by the steps left. The last step
+ * spreads its samples less, to keep the preview about as sharp as when it
+ * was scaled by Window Maker.
+ */
+void wIconMakeMiniPreview(WIcon *icon, Window window, Visual *visual, int width, int height)
+{
+	WScreen *scr = icon->core->screen_ptr;
+	int size = wPreferences.minipreview_size - 2 * MINIPREVIEW_BORDER;
+	XRenderPictFormat *src_format, *format;
+	XRenderPictureAttributes pa;
+	Picture src, dst;
+	Pixmap src_pixmap, dst_pixmap;
+
+	if (size <= 0 || width <= 0 || height <= 0)
+		return;
+
+	src_format = XRenderFindVisualFormat(dpy, visual);
+	format = XRenderFindVisualFormat(dpy, scr->w_visual);
+	if (!src_format || !format)
+		return;
+
+	pa.subwindow_mode = IncludeInferiors;
+	pa.repeat = RepeatPad;
+	src = XRenderCreatePicture(dpy, window, src_format, CPSubwindowMode | CPRepeat, &pa);
+	src_pixmap = None;
+
+	for (;;) {
+		int w = width / 2 >= size ? width / 2 : width;
+		int h = height / 2 >= size ? height / 2 : height;
+		Bool last = (w == width && h == height);
+
+		if (last) {
+			w = h = size;
+		} else {
+			/* the last column or row of an odd size is left out */
+			width = w == width ? width : 2 * w;
+			height = h == height ? height : 2 * h;
+		}
+
+		dst = scaleStep(src, width, height, &dst_pixmap, w, h,
+		                last ? 0.25 : w >= 3 * size ? 0 : 0.375,
+		                last ? 0.25 : h >= 3 * size ? 0 : 0.375,
+		                format, scr->w_depth, scr->root_win);
+		XRenderFreePicture(dpy, src);
+		if (src_pixmap != None)
+			XFreePixmap(dpy, src_pixmap);
+		src = dst;
+		src_pixmap = dst_pixmap;
+
+		if (last)
+			break;
+		width = w;
+		height = h;
+	}
+	XRenderFreePicture(dpy, src);
+
+	if (icon->mini_preview != None)
+		XFreePixmap(dpy, icon->mini_preview);
+	icon->mini_preview = src_pixmap;
 }
 
 /*
