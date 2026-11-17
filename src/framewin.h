@@ -134,6 +134,8 @@ typedef struct WFrameWindow {
 #endif
 
         unsigned int need_texture_change:1;
+        /* states (bit 1 << WS_*) whose title_back etc. are out of date */
+        unsigned int stale_title_textures:3;
 
         unsigned int lbutton_dont_fit:1;
         unsigned int rbutton_dont_fit:1;
