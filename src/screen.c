@@ -65,8 +65,13 @@
 
 #include "defaults.h"
 
+/*
+ * The motion of the pointer is not in there: it would wake Window Maker up
+ * for every move of the pointer over the root window and over all that does
+ * not ask for it itself. See wScreenUpdateRootEvents().
+ */
 #define EVENT_MASK (LeaveWindowMask|EnterWindowMask|PropertyChangeMask\
-    |SubstructureNotifyMask|PointerMotionMask \
+    |SubstructureNotifyMask \
     |SubstructureRedirectMask|ButtonPressMask|ButtonReleaseMask\
     |KeyPressMask|KeyReleaseMask)
 
@@ -667,6 +672,7 @@ WScreen *wScreenInit(int screen_number)
 
 	event_mask = EVENT_MASK;
 	XSelectInput(dpy, scr->root_win, event_mask);
+	scr->root_event_mask = event_mask;
 
 #ifdef KEEP_XKB_LOCK_STATUS
 	if (w_global.xext.xkb.supported)
@@ -970,6 +976,28 @@ void wScreenRestoreState(WScreen * scr)
 
 	wWorkspaceRestoreState(scr);
 	wScreenUpdateUsableArea(scr);
+}
+
+/*
+ * Selects the events of the root window that the options ask for
+ *
+ * The motion of the pointer is only followed there for the hot corners, and
+ * while a menu scrolls because the pointer pushes it against the edge of the
+ * screen, which stops when the pointer leaves the edge. That starts over the
+ * menu, which asks for the motion on its own window (see wMenuCreate()).
+ */
+void wScreenUpdateRootEvents(WScreen *scr)
+{
+	long event_mask = EVENT_MASK;
+
+	if (wPreferences.hot_corners || scr->flags.menu_scrolling)
+		event_mask |= PointerMotionMask;
+
+	if (event_mask == scr->root_event_mask)
+		return;
+
+	XSelectInput(dpy, scr->root_win, event_mask);
+	scr->root_event_mask = event_mask;
 }
 
 void wScreenSaveState(WScreen * scr)
