@@ -59,19 +59,24 @@ static void updateTitlebar(WFrameWindow * fwin);
 
 static void ensureTitleTexture(WFrameWindow *fwin, int state);
 
-static void allocFrameBorderPixel(WFrameWindow *fwin, const char *color_name, unsigned long **pixel);
+static void allocFrameBorderPixel(WFrameWindow *fwin, WMColor *color, unsigned long **pixel);
 
-static void allocFrameBorderPixel(WFrameWindow *fwin, const char *color_name, unsigned long **pixel) {
+/* (re)sets *pixel to the pixel of color in the colormap of the frame, or NULL */
+static void allocFrameBorderPixel(WFrameWindow *fwin, WMColor *color, unsigned long **pixel) {
 	XColor xcol;
+	char *color_name;
 
-	*pixel = NULL;
+	if (*pixel) {
+		wfree(*pixel);
+		*pixel = NULL;
+	}
 
-	if (! wGetColorForColormap(fwin->screen_ptr, fwin->colormap, color_name, &xcol))
-		return;
-
-	*pixel = wmalloc(sizeof(unsigned long));
-	if (*pixel)
+	color_name = WMGetColorRGBDescription(color);
+	if (wGetColorForColormap(fwin->screen_ptr, fwin->colormap, color_name, &xcol)) {
+		*pixel = wmalloc(sizeof(unsigned long));
 		**pixel = xcol.pixel |= 0xff << 24;
+	}
+	wfree(color_name);
 }
 
 WFrameWindow *wFrameWindowCreate(WScreen * scr, int wlevel, int x, int y,
@@ -415,9 +420,9 @@ void wFrameWindowUpdateBorders(WFrameWindow * fwin, int flags)
 
 	checkTitleSize(fwin);
 
-	allocFrameBorderPixel(fwin, WMGetColorRGBDescription(scr->frame_border_color), &fwin->border_pixel);
-	allocFrameBorderPixel(fwin, WMGetColorRGBDescription(scr->frame_focused_border_color), &fwin->focused_border_pixel);
-	allocFrameBorderPixel(fwin, WMGetColorRGBDescription(scr->frame_selected_border_color), &fwin->selected_border_pixel);
+	allocFrameBorderPixel(fwin, scr->frame_border_color, &fwin->border_pixel);
+	allocFrameBorderPixel(fwin, scr->frame_focused_border_color, &fwin->focused_border_pixel);
+	allocFrameBorderPixel(fwin, scr->frame_selected_border_color, &fwin->selected_border_pixel);
 
 	if (flags & WFF_SELECTED) {
 		if (fwin->selected_border_pixel)
@@ -461,6 +466,13 @@ void wFrameWindowDestroy(WFrameWindow * fwin)
 
 	if (fwin->title)
 		wfree(fwin->title);
+
+	if (fwin->border_pixel)
+		wfree(fwin->border_pixel);
+	if (fwin->focused_border_pixel)
+		wfree(fwin->focused_border_pixel);
+	if (fwin->selected_border_pixel)
+		wfree(fwin->selected_border_pixel);
 
 	for (i = 0; i < (fwin->flags.single_texture ? 1 : 3); i++) {
 		FREE_PIXMAP(fwin->title_back[i]);
