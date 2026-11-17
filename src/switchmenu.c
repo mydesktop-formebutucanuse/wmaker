@@ -133,6 +133,10 @@ void OpenSwitchMenu(WScreen * scr, int x, int y, int keyboard)
 	WWindow *wwin;
 
 	if (switchmenu) {
+		/* its size is needed to place it */
+		if (!switchmenu->flags.realized)
+			wMenuRealize(switchmenu);
+
 		if (switchmenu->flags.mapped) {
 			if (!switchmenu->flags.buttoned) {
 				wMenuUnmap(switchmenu);
@@ -225,6 +229,23 @@ static void fillRtext(char *buf, size_t bufsz, WWindow *wwin, WScreen *scr)
 }
 
 /*
+ * The entries of the menu have changed
+ *
+ * The menu is laid out again if it shows, or its torn off copy. If not, that
+ * is left for when it is opened: the windows change their title much more
+ * often than the list is looked at, and the layout measures every entry.
+ */
+static void switchMenuChanged(WMenu *menu)
+{
+	if (menu->flags.mapped || menu->brother->flags.mapped) {
+		wMenuRealize(menu);
+	} else {
+		menu->flags.realized = 0;
+		menu->brother->flags.realized = 0;
+	}
+}
+
+/*
  * Update switch menu
  */
 void UpdateSwitchMenu(WScreen * scr, WWindow * wwin, int action)
@@ -290,7 +311,7 @@ void UpdateSwitchMenu(WScreen * scr, WWindow * wwin, int action)
 			entry->flags.indicator_on = 1;
 		}
 
-		wMenuRealize(switchmenu);
+		switchMenuChanged(switchmenu);
 		checkVisibility = 1;
 	} else {
 		char *t;
@@ -301,7 +322,7 @@ void UpdateSwitchMenu(WScreen * scr, WWindow * wwin, int action)
 				switch (action) {
 				case ACTION_REMOVE:
 					wMenuRemoveItem(switchmenu, i);
-					wMenuRealize(switchmenu);
+					switchMenuChanged(switchmenu);
 					checkVisibility = 1;
 					break;
 
@@ -319,7 +340,7 @@ void UpdateSwitchMenu(WScreen * scr, WWindow * wwin, int action)
 
 					fillRtext(entry->rtext, MAX_RTEXT_LENGTH, wwin, scr);
 
-					wMenuRealize(switchmenu);
+					switchMenuChanged(switchmenu);
 					checkVisibility = 1;
 					break;
 
@@ -356,7 +377,7 @@ void UpdateSwitchMenu(WScreen * scr, WWindow * wwin, int action)
 						entry->flags.indicator_type = it;
 						entry->flags.indicator_on = ion;
 					}
-					wMenuRealize(switchmenu);
+					switchMenuChanged(switchmenu);
 					checkVisibility = 1;
 					break;
 
@@ -380,7 +401,8 @@ void UpdateSwitchMenu(WScreen * scr, WWindow * wwin, int action)
 			}
 		}
 	}
-	if (checkVisibility) {
+	/* a menu that is not laid out is not on the screen */
+	if (checkVisibility && switchmenu->flags.realized) {
 		int tmp;
 
 		tmp = switchmenu->frame->top_width + WMScaled(5);
@@ -411,7 +433,7 @@ static void UpdateSwitchMenuWorkspace(WScreen *scr, int workspace)
 		}
 	}
 	if (!menu->flags.realized)
-		wMenuRealize(menu);
+		switchMenuChanged(menu);
 }
 
 static void observer(void *self, WMNotification * notif)
