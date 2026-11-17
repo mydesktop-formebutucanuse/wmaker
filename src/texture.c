@@ -22,6 +22,7 @@
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 
+#include <stdint.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -141,6 +142,8 @@ void wTextureDestroy(WScreen * scr, WTexture * texture)
 
 	case WTEX_PIXMAP:
 		RReleaseImage(texture->pixmap.pixmap);
+		if (texture->pixmap.tile != None)
+			XFreePixmap(dpy, texture->pixmap.tile);
 		break;
 
 	case WTEX_MHGRADIENT:
@@ -283,6 +286,7 @@ WTexPixmap *wTextureMakePixmap(WScreen *scr, int style, const char *pixmap_file,
 	texture->normal_gc = XCreateGC(dpy, scr->w_win, GCForeground | GCBackground | GCGraphicsExposures, &gcv);
 
 	texture->pixmap = image;
+	texture->tile = None;
 
 	return texture;
 }
@@ -689,4 +693,546 @@ void wDrawBevel(Drawable d, unsigned width, unsigned height, WTexSolid * texture
 		}
 		break;
 	}
+}
+
+/*
+ * Painting textures
+ *
+ * The title bars, resize bars and menus are painted with their texture and
+ * relief, and the lines drawn over them, by the X server, which makes the
+ * same pixels as the image rendered by wTextureRenderImage() and the
+ * functions working on the image: with an accelerated driver (glamor), the
+ * GPU paints them, where Window Maker rendered every pixel and sent the
+ * image.
+ *
+ * That needs the image to be converted to pixels as it is: on TrueColor
+ * visuals with 8 bits per color, which are not dithered, with the Render
+ * extension. Elsewhere Window Maker renders the image, as before.
+ *
+ * The rows of an hgradient are all the same, and so are the columns of a
+ * vgradient: Window Maker renders one, that the X server repeats. Each row
+ * of a dgradient is a part of a longer row, shifted to the right from one
+ * row to the next. A tiled image is sent once and kept with the texture.
+ * The other textures (scaled or centered images, textured gradients) are
+ * rendered by Window Maker and sent, the X server then draws the relief and
+ * the lines. Light is added to the colors with the Render extension and
+ * taken away by inverting the colors, adding light and inverting them back,
+ * since Render cannot subtract.
+ */
+
+/*
+ * The format of the pixmaps the X server paints like Window Maker renders
+ * images, or NULL when it cannot
+ */
+XRenderPictFormat *wPaintFormat(WScreen *scr)
+{
+	RContext *rc = scr->rcontext;
+	XRenderPictFormat *format;
+
+	if (rc->vclass != TrueColor || rc->attribs->render_mode != RBestMatchRendering)
+		return NULL;
+
+	if ((rc->visual->red_mask >> rc->red_offset) != 0xff ||
+	    (rc->visual->green_mask >> rc->green_offset) != 0xff ||
+	    (rc->visual->blue_mask >> rc->blue_offset) != 0xff)
+		return NULL;
+
+	format = XRenderFindVisualFormat(dpy, rc->visual);
+	if (!format || format->depth != rc->depth || format->direct.alphaMask != 0)
+		return NULL;
+
+	return format;
+}
+
+/* Paints the image from x, y at dst_x, dst_y, repeated if repeat is set */
+static void serverComposite(WPaint *paint, Pixmap pixmap, Bool repeat, int x, int y,
+                            int dst_x, int dst_y, int width, int height)
+{
+	XRenderPictureAttributes pa;
+	Picture picture;
+
+	pa.repeat = repeat ? RepeatNormal : RepeatNone;
+	picture = XRenderCreatePicture(dpy, pixmap, wPaintFormat(paint->scr), CPRepeat, &pa);
+	XRenderComposite(dpy, PictOpSrc, picture, None, paint->picture,
+	                 x, y, 0, 0, dst_x, dst_y, width, height);
+	XRenderFreePicture(dpy, picture);
+}
+
+/* Sends the image and paints it, repeated */
+static Bool serverPaintImage(WPaint *paint, RImage *image)
+{
+	Pixmap pixmap;
+
+	if (!image)
+		return False;
+
+	if (!RConvertImage(paint->scr->rcontext, image, &pixmap)) {
+		RReleaseImage(image);
+		return False;
+	}
+	serverComposite(paint, pixmap, True, 0, 0, 0, 0, paint->width, paint->height);
+	XFreePixmap(dpy, pixmap);
+	RReleaseImage(image);
+
+	return True;
+}
+
+/*
+ * Paints a dgradient (see renderDGradient() and renderMDGradient()): each
+ * row is a part of the row of a gradient twice as long, shifted to the
+ * right from one row to the next by the same fraction of a pixel.
+ */
+static Bool serverPaintDiagonal(WPaint *paint, RImage *row)
+{
+	Pixmap pixmap;
+	float a, offset;
+	int j;
+
+	if (!row)
+		return False;
+
+	if (!RConvertImage(paint->scr->rcontext, row, &pixmap)) {
+		RReleaseImage(row);
+		return False;
+	}
+	RReleaseImage(row);
+
+	a = ((float)(paint->width - 1)) / ((float)(paint->height - 1));
+	for (j = 0, offset = 0.0; j < paint->height; j++) {
+		serverComposite(paint, pixmap, False, (int)offset, 0, 0, j, paint->width, 1);
+		offset += a;
+	}
+	XFreePixmap(dpy, pixmap);
+
+	return True;
+}
+
+/* Paints the texture flat, if the X server can paint it */
+static Bool serverPaintTexture(WPaint *paint, WTexture *texture)
+{
+	int width = paint->width, height = paint->height;
+	RColor *colors[3] = { NULL, NULL, NULL };
+	RColor **mcolors;
+	XRenderColor color;
+	int count;
+
+	switch (texture->any.type) {
+	case WTEX_SOLID:
+		color.red = (texture->solid.normal.red >> 8) * 0x101;
+		color.green = (texture->solid.normal.green >> 8) * 0x101;
+		color.blue = (texture->solid.normal.blue >> 8) * 0x101;
+		color.alpha = 0xffff;
+		XRenderFillRectangle(dpy, PictOpSrc, paint->picture, &color, 0, 0, width, height);
+		return True;
+
+	case WTEX_PIXMAP:
+		if (texture->pixmap.subtype != WTP_TILE)
+			return False;
+		if (texture->pixmap.tile == None &&
+		    !RConvertImage(paint->scr->rcontext, texture->pixmap.pixmap, &texture->pixmap.tile)) {
+			texture->pixmap.tile = None;
+			return False;
+		}
+		serverComposite(paint, texture->pixmap.tile, True, 0, 0, 0, 0, width, height);
+		return True;
+
+	case WTEX_HGRADIENT:
+		return serverPaintImage(paint, RRenderGradient(width, 1, &texture->gradient.color1,
+		                                               &texture->gradient.color2,
+		                                               RHorizontalGradient));
+
+	case WTEX_VGRADIENT:
+		return serverPaintImage(paint, RRenderGradient(1, height, &texture->gradient.color1,
+		                                               &texture->gradient.color2,
+		                                               RVerticalGradient));
+
+	case WTEX_MHGRADIENT:
+		return serverPaintImage(paint, RRenderMultiGradient(width, 1, &texture->mgradient.colors[1],
+		                                                    RHorizontalGradient));
+
+	case WTEX_MVGRADIENT:
+		return serverPaintImage(paint, RRenderMultiGradient(1, height, &texture->mgradient.colors[1],
+		                                                    RVerticalGradient));
+
+	case WTEX_IGRADIENT:
+		return serverPaintImage(paint, RRenderInterwovenGradient(1, height,
+		                                                         texture->igradient.colors1,
+		                                                         texture->igradient.thickness1,
+		                                                         texture->igradient.colors2,
+		                                                         texture->igradient.thickness2));
+
+	case WTEX_DGRADIENT:
+		if (width == 1 || height == 1)
+			return False;
+		return serverPaintDiagonal(paint, RRenderGradient(2 * width - 1, 1, &texture->gradient.color1,
+		                                                  &texture->gradient.color2,
+		                                                  RHorizontalGradient));
+
+	case WTEX_MDGRADIENT:
+		if (width == 1 || height == 1)
+			return False;
+
+		/* see RRenderMultiGradient() and renderMDGradient() */
+		mcolors = &texture->mgradient.colors[1];
+		for (count = 0; mcolors[count] != NULL; count++)
+			;
+		if (count > 2) {
+			count = WMIN(count, WMIN(width, height));
+			if (count <= 2)
+				return False;
+
+			mcolors = wmalloc((count + 1) * sizeof(RColor *));
+			memcpy(mcolors, &texture->mgradient.colors[1], count * sizeof(RColor *));
+			mcolors[count] = NULL;
+			count = serverPaintDiagonal(paint, RRenderMultiGradient(2 * width - 1, 1, mcolors,
+			                                                        RHorizontalGradient));
+			wfree(mcolors);
+			return count;
+		}
+		colors[0] = mcolors[0];
+		colors[1] = count > 1 ? mcolors[1] : mcolors[0];
+		return serverPaintDiagonal(paint, RRenderGradient(2 * width - 1, 1, colors[0], colors[1],
+		                                                  RHorizontalGradient));
+
+	default:
+		return False;
+	}
+}
+
+/* The operation of ROperateLine() on the pixels from x0, y0 to x1, y1 included */
+static void serverOperate(WPaint *paint, int operation, int x0, int y0, int x1, int y1, const RColor *color)
+{
+	XRenderColor c;
+	unsigned int w, h;
+
+	x0 = WMAX(x0, 0);
+	y0 = WMAX(y0, 0);
+	x1 = WMIN(x1, paint->width - 1);
+	y1 = WMIN(y1, paint->height - 1);
+	if (x1 < x0 || y1 < y0)
+		return;
+	w = x1 - x0 + 1;
+	h = y1 - y0 + 1;
+
+	c.red = color->red * 0x101;
+	c.green = color->green * 0x101;
+	c.blue = color->blue * 0x101;
+	c.alpha = 0xffff;
+
+	switch (operation) {
+	case RAddOperation:
+		XRenderFillRectangle(dpy, PictOpAdd, paint->picture, &c, x0, y0, w, h);
+		break;
+
+	case RSubtractOperation:
+		/* 255 - min(255, (255 - c) + delta) = max(0, c - delta) */
+		if (!paint->invert_gc) {
+			XGCValues gcv;
+
+			gcv.function = GXinvert;
+			gcv.graphics_exposures = False;
+			paint->invert_gc = XCreateGC(dpy, paint->pixmap, GCFunction | GCGraphicsExposures, &gcv);
+		}
+		XFillRectangle(dpy, paint->pixmap, paint->invert_gc, x0, y0, w, h);
+		XRenderFillRectangle(dpy, PictOpAdd, paint->picture, &c, x0, y0, w, h);
+		XFillRectangle(dpy, paint->pixmap, paint->invert_gc, x0, y0, w, h);
+		break;
+
+	default:
+		/* drawn with an opaque color */
+		XRenderFillRectangle(dpy, PictOpSrc, paint->picture, &c, x0, y0, w, h);
+		break;
+	}
+}
+
+/* operateBlock() and drawBlock() of wrlib */
+static void serverBlock(WPaint *paint, int operation, int x0, int y0, int x1, int y1, const RColor *color)
+{
+	if (x1 < x0 || y1 < y0)
+		return;
+
+	serverOperate(paint, operation, x0, y0, x1, y1, color);
+}
+
+/* RBevelImageScaled() */
+static void serverBevel(WPaint *paint, int bevel_type, int t)
+{
+	RColor color, cdelta;
+	int w = paint->width, h = paint->height;
+
+	if (t < 1)
+		t = 1;
+
+	if (w < 3 * t || h < 3 * t)
+		return;
+
+	color.alpha = 255;
+	color.red = color.green = color.blue = 0;
+	cdelta.alpha = 0;
+
+	if (bevel_type > 0) {	/* raised */
+		/* top */
+		cdelta.red = cdelta.green = cdelta.blue = 80;
+		serverBlock(paint, RAddOperation, 0, 0, w - 1, t - 1, &cdelta);
+		if (bevel_type == RBEV_RAISED3 && w > 3 * t)
+			serverBlock(paint, RAddOperation, t, t, w - 1 - 2 * t, 2 * t - 1, &cdelta);
+
+		/* left */
+		serverBlock(paint, RAddOperation, 0, t, t - 1, h - 1, &cdelta);
+		if (bevel_type == RBEV_RAISED3 && h > 3 * t)
+			serverBlock(paint, RAddOperation, t, 2 * t, 2 * t - 1, h - 1 - 2 * t, &cdelta);
+
+		/* bottom */
+		cdelta.red = cdelta.green = cdelta.blue = 40;
+		if (bevel_type == RBEV_RAISED2 || bevel_type == RBEV_RAISED3) {
+			serverBlock(paint, RSubtractOperation, 0, h - 2 * t, w - 1 - 2 * t, h - 1 - t, &cdelta);
+			serverBlock(paint, RCopyOperation, 0, h - t, w - 1, h - 1, &color);
+		} else {
+			serverBlock(paint, RSubtractOperation, 0, h - t, w - 1, h - 1, &cdelta);
+		}
+
+		/* right */
+		if (bevel_type == RBEV_RAISED2 || bevel_type == RBEV_RAISED3) {
+			serverBlock(paint, RSubtractOperation, w - 2 * t, 0, w - 1 - t, h - 1 - t, &cdelta);
+			serverBlock(paint, RCopyOperation, w - t, 0, w - 1, h - 1 - t, &color);
+		} else {
+			serverBlock(paint, RSubtractOperation, w - t, 0, w - 1, h - 1 - t, &cdelta);
+		}
+	} else {		/* sunken */
+		cdelta.red = cdelta.green = cdelta.blue = 40;
+		serverBlock(paint, RSubtractOperation, 0, 0, w - 1, t - 1, &cdelta);	/* top */
+		serverBlock(paint, RSubtractOperation, 0, t, t - 1, h - 1, &cdelta);	/* left */
+		cdelta.red = cdelta.green = cdelta.blue = 80;
+		serverBlock(paint, RAddOperation, 0, h - t, w - 1, h - 1, &cdelta);	/* bottom */
+		serverBlock(paint, RAddOperation, w - t, 0, w - 1, h - 1 - t, &cdelta);	/* right */
+	}
+}
+
+/* ROperateLine() of a horizontal or vertical line */
+static void serverLine(WPaint *paint, int operation, int x0, int y0, int x1, int y1, const RColor *color)
+{
+	serverOperate(paint, operation, WMIN(x0, x1), WMIN(y0, y1), WMAX(x0, x1), WMAX(y0, y1), color);
+}
+
+/* bevelImage() */
+static void serverBevelMenuEntry(WPaint *paint)
+{
+	int width = paint->width, height = paint->height;
+	int t = WMScaled(1);
+	RColor color;
+	int i;
+
+	for (i = 0; i < t; i++) {
+		color.red = color.green = color.blue = 80;
+		color.alpha = 0;
+		serverLine(paint, RAddOperation, t, i, width - 1 - t, i, &color);
+		serverLine(paint, RAddOperation, i, 0, i, height - 1, &color);
+
+		color.red = color.green = color.blue = 40;
+		serverLine(paint, RSubtractOperation, width - 1 - i, 0, width - 1 - i, height - 1, &color);
+		serverLine(paint, RSubtractOperation, t, height - 1 - t - i, width - 1 - t,
+		           height - 1 - t - i, &color);
+
+		color.red = color.green = color.blue = 0;
+		color.alpha = 255;
+		serverLine(paint, RCopyOperation, 0, height - 1 - i, width - 1, height - 1 - i, &color);
+	}
+}
+
+/*
+ * Starts painting a texture of width x height with its relief, the way
+ * wTextureRenderImage() renders it: on the X server if it can, else
+ * Window Maker renders the image. Returns False if it could not.
+ */
+Bool wPaintTexture(WPaint *paint, WScreen *scr, WTexture *texture, int width, int height, int relief)
+{
+	XRenderPictFormat *format;
+
+	memset(paint, 0, sizeof(*paint));
+	paint->scr = scr;
+	paint->width = width;
+	paint->height = height;
+
+	if (width <= 0 || height <= 0)
+		return False;
+
+	format = wPaintFormat(scr);
+	if (!format) {
+		paint->image = wTextureRenderImage(texture, width, height, relief);
+		return paint->image != NULL;
+	}
+
+	paint->pixmap = XCreatePixmap(dpy, scr->rcontext->drawable, width, height, scr->rcontext->depth);
+	paint->picture = XRenderCreatePicture(dpy, paint->pixmap, format, 0, NULL);
+
+	if (!serverPaintTexture(paint, texture) &&
+	    !serverPaintImage(paint, wTextureRenderImage(texture, width, height, WREL_FLAT))) {
+		wPaintRelease(paint);
+		return False;
+	}
+
+	switch (relief) {
+	case WREL_ICON:
+		serverBevel(paint, RBEV_RAISED3, WMScaled(1));
+		break;
+	case WREL_RAISED:
+		serverBevel(paint, RBEV_RAISED2, WMScaled(1));
+		break;
+	case WREL_SUNKEN:
+		serverBevel(paint, RBEV_SUNKEN, WMScaled(1));
+		break;
+	case WREL_MENUENTRY:
+		serverBevelMenuEntry(paint);
+		break;
+	}
+
+	return True;
+}
+
+/*
+ * Starts painting the part of src from x, y of width x height (cut to src,
+ * like RGetSubImage()), painted with what src has
+ */
+Bool wPaintPart(WPaint *paint, const WPaint *src, int x, int y, int width, int height)
+{
+	memset(paint, 0, sizeof(*paint));
+	paint->scr = src->scr;
+
+	if (x < 0 || y < 0 || x >= src->width || y >= src->height || width <= 0 || height <= 0)
+		return False;
+
+	paint->width = WMIN(width, src->width - x);
+	paint->height = WMIN(height, src->height - y);
+
+	if (src->image) {
+		paint->image = RGetSubImage(src->image, x, y, paint->width, paint->height);
+		return paint->image != NULL;
+	}
+
+	paint->pixmap = XCreatePixmap(dpy, src->scr->rcontext->drawable, paint->width, paint->height,
+	                              src->scr->rcontext->depth);
+	paint->picture = XRenderCreatePicture(dpy, paint->pixmap, wPaintFormat(src->scr), 0, NULL);
+	XRenderComposite(dpy, PictOpSrc, src->picture, None, paint->picture,
+	                 x, y, 0, 0, 0, 0, paint->width, paint->height);
+
+	return True;
+}
+
+/* RBevelImageScaled() with the GUI scale factor */
+void wPaintBevel(WPaint *paint, int bevel_type)
+{
+	if (paint->image)
+		RBevelImageScaled(paint->image, bevel_type, WMScaled(1));
+	else
+		serverBevel(paint, bevel_type, WMScaled(1));
+}
+
+/* wOperateScaledLine() of a horizontal or vertical line */
+void wPaintOperateLine(WPaint *paint, int operation, int x1, int y1, int x2, int y2, const RColor *color)
+{
+	int t = WMScaled(1);
+
+	if (paint->image)
+		wOperateScaledLine(paint->image, operation, x1, y1, x2, y2, color);
+	else if (y1 == y2)
+		serverOperate(paint, operation, WMIN(x1, x2), y1, WMAX(x1, x2) + t - 1, y1 + t - 1, color);
+	else if (x1 == x2)
+		serverOperate(paint, operation, x1, WMIN(y1, y2), x1 + t - 1, WMAX(y1, y2) + t - 1, color);
+}
+
+/* wDrawScaledImageLine() of a horizontal or vertical line, with an opaque color */
+void wPaintDrawLine(WPaint *paint, int x1, int y1, int x2, int y2, const RColor *color)
+{
+	if (paint->image)
+		wDrawScaledImageLine(paint->image, x1, y1, x2, y2, color);
+	else
+		wPaintOperateLine(paint, RCopyOperation, x1, y1, x2, y2, color);
+}
+
+/* Ends the painting: returns the pixmap painted */
+Pixmap wPaintFinish(WPaint *paint)
+{
+	Pixmap pixmap = None;
+
+	if (paint->image) {
+		if (!RConvertImage(paint->scr->rcontext, paint->image, &pixmap)) {
+			wwarning(_("error rendering image:%s"), RMessageForError(RErrorCode));
+			pixmap = None;
+		}
+	} else {
+		pixmap = paint->pixmap;
+		paint->pixmap = None;
+	}
+	wPaintRelease(paint);
+
+	return pixmap;
+}
+
+/*
+ * The image, with its alpha channel, as a Render picture on the X server,
+ * to be composited there. The colors are premultiplied by the alpha, as
+ * Render wants them. Returns None if it could not.
+ */
+Picture wPictureFromImage(WScreen *scr, RImage *image)
+{
+	XRenderPictFormat *format = XRenderFindStandardFormat(dpy, PictStandardARGB32);
+	union { uint32_t word; unsigned char bytes[4]; } order = { 1 };
+	int channels = image->format == RRGBAFormat ? 4 : 3;
+	int i, count = image->width * image->height;
+	unsigned char *s = image->data;
+	uint32_t *data;
+	XImage *ximage;
+	Pixmap pixmap;
+	Picture picture;
+	GC gc;
+
+	if (!format || count <= 0)
+		return None;
+
+	data = malloc(count * sizeof(uint32_t));
+	if (!data)
+		return None;
+
+	for (i = 0; i < count; i++, s += channels) {
+		uint32_t a = channels == 4 ? s[3] : 255;
+
+		data[i] = a << 24 |
+			((s[0] * a + 127) / 255) << 16 |
+			((s[1] * a + 127) / 255) << 8 |
+			((s[2] * a + 127) / 255);
+	}
+
+	ximage = XCreateImage(dpy, scr->rcontext->visual, 32, ZPixmap, 0, (char *)data,
+	                      image->width, image->height, 32, 0);
+	if (!ximage) {
+		free(data);
+		return None;
+	}
+	/* the words are in the order of this machine, Xlib swaps them if the X server wants */
+	ximage->byte_order = order.bytes[0] ? LSBFirst : MSBFirst;
+
+	pixmap = XCreatePixmap(dpy, scr->root_win, image->width, image->height, 32);
+	gc = XCreateGC(dpy, pixmap, 0, NULL);
+	XPutImage(dpy, pixmap, gc, ximage, 0, 0, 0, 0, image->width, image->height);
+	XFreeGC(dpy, gc);
+	XDestroyImage(ximage);
+
+	picture = XRenderCreatePicture(dpy, pixmap, format, 0, NULL);
+	XFreePixmap(dpy, pixmap);
+
+	return picture;
+}
+
+/* Ends the painting, without the pixmap */
+void wPaintRelease(WPaint *paint)
+{
+	if (paint->image)
+		RReleaseImage(paint->image);
+	if (paint->picture != None)
+		XRenderFreePicture(dpy, paint->picture);
+	if (paint->pixmap != None)
+		XFreePixmap(dpy, paint->pixmap);
+	if (paint->invert_gc)
+		XFreeGC(dpy, paint->invert_gc);
+	memset(paint, 0, sizeof(*paint));
 }

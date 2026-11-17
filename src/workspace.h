@@ -26,7 +26,7 @@
 typedef struct WWorkspace {
     char *name;
     struct WDock *clip;
-    RImage *map;
+    WMPixmap *map;		       /* the screen scaled down, for the workspace map */
 } WWorkspace;
 
 void wWorkspaceMake(WScreen *scr, int count);
@@ -37,6 +37,7 @@ void wWorkspaceChange(WScreen *scr, int workspace);
 void wWorkspaceForceChange(WScreen *scr, int workspace);
 WMenu *wWorkspaceMenuMake(WScreen *scr, Bool titled);
 void wWorkspaceMenuUpdate(WScreen *scr, WMenu *menu);
+void wWorkspaceMenuUpdateShortcuts(WScreen *scr);
 void wWorkspaceMenuEdit(WScreen *scr);
 void wWorkspaceSaveState(WScreen *scr, WMPropList *old_state);
 void wWorkspaceRestoreState(WScreen *scr);

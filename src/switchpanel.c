@@ -32,6 +32,7 @@
 #include "defaults.h"
 #include "switchpanel.h"
 #include "misc.h"
+#include "texture.h"
 #include "xinerama.h"
 
 
@@ -57,6 +58,12 @@ struct SwitchPanel {
 
 	RImage *tileTmp;
 	RImage *tile;
+
+	/* the images on the X server, which composites the icons (see compositeIcon()) */
+	XRenderPictFormat *format;
+	Picture bgPicture;
+	Picture tilePicture;
+	WMArray *pictures;
 
 	WMFont *font;
 	WMColor *white;
@@ -108,6 +115,102 @@ static Bool sameWindowClass(WWindow *wwin, WWindow *curwin)
 	return True;
 }
 
+/*
+ * The pixmap of the icon of a window in the panel, on its piece of the
+ * background of the panel, over the tile if it is selected
+ */
+static Pixmap renderIcon(WSwitchPanel *panel, RImage *image, int selected, int opaq, int bx, int by)
+{
+	RImage *back = panel->tileTmp;
+	RImage *tile;
+	Pixmap p;
+
+	if (!back)
+		return None;
+
+	if (panel->bg) {
+		RCopyArea(back, panel->bg, bx, by, back->width, back->height, 0, 0);
+	} else {
+		RColor color;
+		color.red = WMRedComponentOfColor(panel->gray) >> 8;
+		color.green = WMGreenComponentOfColor(panel->gray) >> 8;
+		color.blue = WMBlueComponentOfColor(panel->gray) >> 8;
+		color.alpha = 255;
+		RFillImage(back, &color);
+	}
+
+	if (selected) {
+		tile = panel->tile;
+		RCombineArea(back, tile, 0, 0, tile->width, tile->height,
+			     (back->width - tile->width) / 2, (back->height - tile->height) / 2);
+	}
+
+	RCombineAreaWithOpaqueness(back, image, 0, 0, image->width, image->height,
+				   (back->width - image->width) / 2, (back->height - image->height) / 2,
+				   opaq);
+
+	if (!RConvertImage(panel->scr->rcontext, back, &p))
+		return None;
+
+	return p;
+}
+
+/*
+ * The same composited by the X server, from the images sent once when the
+ * panel opens: selecting another window sends nothing
+ */
+static Pixmap compositeIcon(WSwitchPanel *panel, int idecks, RImage *image, int selected, int opaq,
+                            int bx, int by)
+{
+	WScreen *scr = panel->scr;
+	Picture dst, picture, mask = None;
+	Pixmap pixmap;
+
+	picture = (Picture) (uintptr_t) WMGetFromArray(panel->pictures, idecks);
+	if (picture == None) {
+		picture = wPictureFromImage(scr, image);
+		if (picture == None)
+			return None;
+		WMReplaceInArray(panel->pictures, idecks, (void *) (uintptr_t) picture);
+	}
+
+	pixmap = XCreatePixmap(dpy, scr->rcontext->drawable, icon_tile_size, icon_tile_size, scr->rcontext->depth);
+	dst = XRenderCreatePicture(dpy, pixmap, panel->format, 0, NULL);
+
+	if (panel->bgPicture != None) {
+		XRenderComposite(dpy, PictOpSrc, panel->bgPicture, None, dst,
+		                 bx, by, 0, 0, 0, 0, icon_tile_size, icon_tile_size);
+	} else {
+		XRenderColor color;
+
+		color.red = (WMRedComponentOfColor(panel->gray) >> 8) * 0x101;
+		color.green = (WMGreenComponentOfColor(panel->gray) >> 8) * 0x101;
+		color.blue = (WMBlueComponentOfColor(panel->gray) >> 8) * 0x101;
+		color.alpha = 0xffff;
+		XRenderFillRectangle(dpy, PictOpSrc, dst, &color, 0, 0, icon_tile_size, icon_tile_size);
+	}
+
+	if (selected)
+		XRenderComposite(dpy, PictOpOver, panel->tilePicture, None, dst, 0, 0, 0, 0,
+		                 (icon_tile_size - panel->tile->width) / 2,
+		                 (icon_tile_size - panel->tile->height) / 2,
+		                 panel->tile->width, panel->tile->height);
+
+	if (opaq < 255) {
+		XRenderColor color = { 0, 0, 0, opaq * 0x101 };
+
+		mask = XRenderCreateSolidFill(dpy, &color);
+	}
+	XRenderComposite(dpy, PictOpOver, picture, mask, dst, 0, 0, 0, 0,
+	                 (icon_tile_size - image->width) / 2, (icon_tile_size - image->height) / 2,
+	                 image->width, image->height);
+	if (mask != None)
+		XRenderFreePicture(dpy, mask);
+	XRenderFreePicture(dpy, dst);
+
+	return pixmap;
+}
+
 static void changeImage(WSwitchPanel *panel, int idecks, int selected, Bool dim, Bool force)
 {
 	WMFrame *icon = NULL;
@@ -137,9 +240,8 @@ static void changeImage(WSwitchPanel *panel, int idecks, int selected, Bool dim,
 		WMSetFrameRelief(icon, WRFlat);
 
 	if (image && icon) {
-		RImage *back;
 		int opaq = (dim) ? 75 : 255;
-		RImage *tile;
+		int bx, by;
 		WMPoint pos;
 		Pixmap p;
 
@@ -147,34 +249,19 @@ static void changeImage(WSwitchPanel *panel, int idecks, int selected, Bool dim,
 			opaq = 50;
 
 		pos = WMGetViewPosition(WMWidgetView(icon));
-		back = panel->tileTmp;
-		if (panel->bg) {
-			RCopyArea(back, panel->bg,
-				  border_space + pos.x - panel->firstVisible * icon_tile_size,
-				  border_space + pos.y, back->width, back->height, 0, 0);
-		} else {
-			RColor color;
-			color.red = WMRedComponentOfColor(panel->gray) >> 8;
-			color.green = WMGreenComponentOfColor(panel->gray) >> 8;
-			color.blue = WMBlueComponentOfColor(panel->gray) >> 8;
-			color.alpha = 255;
-			RFillImage(back, &color);
+		bx = border_space + pos.x - panel->firstVisible * icon_tile_size;
+		by = border_space + pos.y;
+		p = None;
+		if (panel->format)
+			p = compositeIcon(panel, idecks, image, selected, opaq, bx, by);
+		if (p == None)
+			p = renderIcon(panel, image, selected, opaq, bx, by);
+
+		if (p != None) {
+			XSetWindowBackgroundPixmap(dpy, WMWidgetXID(icon), p);
+			XClearWindow(dpy, WMWidgetXID(icon));
+			XFreePixmap(dpy, p);
 		}
-
-		if (selected) {
-			tile = panel->tile;
-			RCombineArea(back, tile, 0, 0, tile->width, tile->height,
-				     (back->width - tile->width) / 2, (back->height - tile->height) / 2);
-		}
-
-		RCombineAreaWithOpaqueness(back, image, 0, 0, image->width, image->height,
-					   (back->width - image->width) / 2, (back->height - image->height) / 2,
-					   opaq);
-
-		RConvertImage(panel->scr->rcontext, back, &p);
-		XSetWindowBackgroundPixmap(dpy, WMWidgetXID(icon), p);
-		XClearWindow(dpy, WMWidgetXID(icon));
-		XFreePixmap(dpy, p);
 	}
 
 	if (!panel->bg && !panel->tile && selected)
@@ -495,8 +582,20 @@ WSwitchPanel *wInitSwitchPanel(WScreen *scr, WWindow *curwin, Bool class_only)
 	WMMapSubwidgets(panel->win);
 	WMRealizeWidget(panel->win);
 
-	WM_ITERATE_ARRAY(panel->windows, wwin, i) {
-		changeImage(panel, i, 0, False, True);
+	/*
+	 * Where the image is converted as it is (not dithered), the X server
+	 * composites the icons on the background of the panel, the tile and
+	 * the icons it got once
+	 */
+	panel->format = panel->tile ? wPaintFormat(scr) : NULL;
+	if (panel->format)
+		panel->tilePicture = wPictureFromImage(scr, panel->tile);
+	if (panel->tilePicture == None)
+		panel->format = NULL;
+	if (panel->format) {
+		panel->pictures = WMCreateArray(count);
+		for (i = 0; i < count; i++)
+			WMAddToArray(panel->pictures, (void *) (uintptr_t) None);
 	}
 
 	if (panel->bg) {
@@ -510,11 +609,20 @@ WSwitchPanel *wInitSwitchPanel(WScreen *scr, WWindow *curwin, Bool class_only)
 		if (mask && w_global.xext.shape.supported)
 			XShapeCombineMask(dpy, WMWidgetXID(panel->win), ShapeBounding, 0, 0, mask, ShapeSet);
 #endif
+		if (pixmap && panel->format)
+			panel->bgPicture = XRenderCreatePicture(dpy, pixmap, panel->format, 0, NULL);
+		if (panel->bgPicture == None)
+			panel->format = NULL;
+
 		if (pixmap)
 			XFreePixmap(dpy, pixmap);
 
 		if (mask)
 			XFreePixmap(dpy, mask);
+	}
+
+	WM_ITERATE_ARRAY(panel->windows, wwin, i) {
+		changeImage(panel, i, 0, False, True);
 	}
 
 	{
@@ -577,6 +685,22 @@ void wSwitchPanelDestroy(WSwitchPanel *panel)
 
 	if (panel->tileTmp)
 		RReleaseImage(panel->tileTmp);
+
+	if (panel->pictures) {
+		void *picture;
+
+		WM_ITERATE_ARRAY(panel->pictures, picture, i) {
+			if (picture)
+				XRenderFreePicture(dpy, (Picture) (uintptr_t) picture);
+		}
+		WMFreeArray(panel->pictures);
+	}
+
+	if (panel->tilePicture != None)
+		XRenderFreePicture(dpy, panel->tilePicture);
+
+	if (panel->bgPicture != None)
+		XRenderFreePicture(dpy, panel->bgPicture);
 
 	if (panel->bg)
 		RReleaseImage(panel->bg);

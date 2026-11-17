@@ -475,6 +475,7 @@ RImage *get_default_image(WScreen *scr)
 	image = get_rimage_from_file(scr, path, wPreferences.icon_size);
 	if (!image)
 		wwarning(_("could not find default icon \"%s\""), path);
+	wfree(path);
 
 	/* Resize the icon to the wPreferences.icon_size size
 	 * usually this function will return early, because size is right */
@@ -485,12 +486,17 @@ RImage *get_default_image(WScreen *scr)
 
 RImage *get_icon_image(WScreen *scr, const char *winstance, const char *wclass, int max_size)
 {
-	char *file_name = NULL;
+	char *file_name;
+	RImage *image;
 
 	/* Get the file name of the image, using instance and class */
 	file_name = get_icon_filename(winstance, wclass, NULL, True);
 
-	return get_rimage_from_file(scr, file_name, max_size);
+	image = get_rimage_from_file(scr, file_name, max_size);
+	if (file_name)
+		wfree(file_name);
+
+	return image;
 }
 
 int wDefaultGetStartWorkspace(WScreen *scr, const char *instance, const char *class)

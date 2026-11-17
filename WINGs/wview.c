@@ -401,6 +401,9 @@ static void destroyView(W_View * view)
 	if (view->backColor)
 		WMReleaseColor(view->backColor);
 
+	if (view->backImage)
+		WMReleasePixmap(view->backImage);
+
 	wfree(view);
 }
 

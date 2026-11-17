@@ -59,19 +59,24 @@ static void updateTitlebar(WFrameWindow * fwin);
 
 static void ensureTitleTexture(WFrameWindow *fwin, int state);
 
-static void allocFrameBorderPixel(WFrameWindow *fwin, const char *color_name, unsigned long **pixel);
+static void allocFrameBorderPixel(WFrameWindow *fwin, WMColor *color, unsigned long **pixel);
 
-static void allocFrameBorderPixel(WFrameWindow *fwin, const char *color_name, unsigned long **pixel) {
+/* (re)sets *pixel to the pixel of color in the colormap of the frame, or NULL */
+static void allocFrameBorderPixel(WFrameWindow *fwin, WMColor *color, unsigned long **pixel) {
 	XColor xcol;
+	char *color_name;
 
-	*pixel = NULL;
+	if (*pixel) {
+		wfree(*pixel);
+		*pixel = NULL;
+	}
 
-	if (! wGetColorForColormap(fwin->screen_ptr, fwin->colormap, color_name, &xcol))
-		return;
-
-	*pixel = wmalloc(sizeof(unsigned long));
-	if (*pixel)
+	color_name = WMGetColorRGBDescription(color);
+	if (wGetColorForColormap(fwin->screen_ptr, fwin->colormap, color_name, &xcol)) {
+		*pixel = wmalloc(sizeof(unsigned long));
 		**pixel = xcol.pixel |= 0xff << 24;
+	}
+	wfree(color_name);
 }
 
 WFrameWindow *wFrameWindowCreate(WScreen * scr, int wlevel, int x, int y,
@@ -415,9 +420,9 @@ void wFrameWindowUpdateBorders(WFrameWindow * fwin, int flags)
 
 	checkTitleSize(fwin);
 
-	allocFrameBorderPixel(fwin, WMGetColorRGBDescription(scr->frame_border_color), &fwin->border_pixel);
-	allocFrameBorderPixel(fwin, WMGetColorRGBDescription(scr->frame_focused_border_color), &fwin->focused_border_pixel);
-	allocFrameBorderPixel(fwin, WMGetColorRGBDescription(scr->frame_selected_border_color), &fwin->selected_border_pixel);
+	allocFrameBorderPixel(fwin, scr->frame_border_color, &fwin->border_pixel);
+	allocFrameBorderPixel(fwin, scr->frame_focused_border_color, &fwin->focused_border_pixel);
+	allocFrameBorderPixel(fwin, scr->frame_selected_border_color, &fwin->selected_border_pixel);
 
 	if (flags & WFF_SELECTED) {
 		if (fwin->selected_border_pixel)
@@ -461,6 +466,13 @@ void wFrameWindowDestroy(WFrameWindow * fwin)
 
 	if (fwin->title)
 		wfree(fwin->title);
+
+	if (fwin->border_pixel)
+		wfree(fwin->border_pixel);
+	if (fwin->focused_border_pixel)
+		wfree(fwin->focused_border_pixel);
+	if (fwin->selected_border_pixel)
+		wfree(fwin->selected_border_pixel);
 
 	for (i = 0; i < (fwin->flags.single_texture ? 1 : 3); i++) {
 		FREE_PIXMAP(fwin->title_back[i]);
@@ -636,6 +648,19 @@ void wFrameWindowShowButton(WFrameWindow * fwin, int flags)
 	}
 }
 
+/* The pixmap of the part of the title bar from x to x + width, with its bevel */
+static Pixmap makeTitlePart(WPaint *paint, int x, int width, int height)
+{
+	WPaint part;
+
+	if (!wPaintPart(&part, paint, x, 0, width, height))
+		return None;
+
+	wPaintBevel(&part, RBEV_RAISED2);
+
+	return wPaintFinish(&part);
+}
+
 static void
 #ifdef XKB_BUTTON_HINT
 renderTexture(WScreen * scr, WTexture * texture, int width, int height,
@@ -646,11 +671,7 @@ renderTexture(WScreen * scr, WTexture * texture, int width, int height,
 	      int bwidth, int bheight, int left, int right, Pixmap * title, Pixmap * lbutton, Pixmap * rbutton)
 #endif
 {
-	RImage *img;
-	RImage *limg, *rimg, *mimg;
-#ifdef XKB_BUTTON_HINT
-	RImage *timg;
-#endif
+	WPaint paint;
 	int x, w;
 
 	*title = None;
@@ -660,99 +681,51 @@ renderTexture(WScreen * scr, WTexture * texture, int width, int height,
 	*languagebutton = None;
 #endif
 
-	img = wTextureRenderImage(texture, width, height, WREL_FLAT);
-	if (!img) {
+	if (!wPaintTexture(&paint, scr, texture, width, height, WREL_FLAT)) {
 		wwarning(_("could not render texture: %s"), RMessageForError(RErrorCode));
 		return;
 	}
 
 	if (wPreferences.new_style == TS_NEW) {
-		if (left)
-			limg = RGetSubImage(img, 0, 0, bwidth, bheight);
-		else
-			limg = NULL;
-
 		x = 0;
-		w = img->width;
+		w = width;
 
-#ifdef XKB_BUTTON_HINT
-		if (language)
-			timg = RGetSubImage(img, bwidth * left, 0, bwidth, bheight);
-		else
-			timg = NULL;
-#endif
-
-		if (limg) {
-			RBevelImageScaled(limg, RBEV_RAISED2, WMScaled(1));
-			if (!RConvertImage(scr->rcontext, limg, lbutton))
-				wwarning(_("error rendering image:%s"), RMessageForError(RErrorCode));
-
-			x += limg->width;
-			w -= limg->width;
-			RReleaseImage(limg);
+		if (left) {
+			*lbutton = makeTitlePart(&paint, 0, WMIN(bwidth, width), bheight);
+			x += WMIN(bwidth, width);
+			w -= WMIN(bwidth, width);
 		}
 #ifdef XKB_BUTTON_HINT
-		if (timg) {
-			RBevelImageScaled(timg, RBEV_RAISED2, WMScaled(1));
-			if (!RConvertImage(scr->rcontext, timg, languagebutton))
-				wwarning(_("error rendering image:%s"), RMessageForError(RErrorCode));
-
-			x += timg->width;
-			w -= timg->width;
-			RReleaseImage(timg);
+		if (language && x < width) {
+			*languagebutton = makeTitlePart(&paint, x, WMIN(bwidth, width - x), bheight);
+			w -= WMIN(bwidth, width - x);
+			x += WMIN(bwidth, width - x);
 		}
 #endif
-
-		if (right)
-			rimg = RGetSubImage(img, width - bwidth, 0, bwidth, bheight);
-		else
-			rimg = NULL;
-
-		if (rimg) {
-			RBevelImageScaled(rimg, RBEV_RAISED2, WMScaled(1));
-			if (!RConvertImage(scr->rcontext, rimg, rbutton))
-				wwarning(_("error rendering image:%s"), RMessageForError(RErrorCode));
-
-			w -= rimg->width;
-			RReleaseImage(rimg);
+		if (right) {
+			*rbutton = makeTitlePart(&paint, width - bwidth, bwidth, bheight);
+			w -= bwidth;
 		}
 
-		if (w != width) {
-			mimg = RGetSubImage(img, x, 0, w, img->height);
-			RBevelImageScaled(mimg, RBEV_RAISED2, WMScaled(1));
-
-			if (!RConvertImage(scr->rcontext, mimg, title))
-				wwarning(_("error rendering image:%s"), RMessageForError(RErrorCode));
-
-			RReleaseImage(mimg);
-		} else {
-			RBevelImageScaled(img, RBEV_RAISED2, WMScaled(1));
-
-			if (!RConvertImage(scr->rcontext, img, title))
-				wwarning(_("error rendering image:%s"), RMessageForError(RErrorCode));
-		}
+		*title = makeTitlePart(&paint, x, w, height);
 	} else {
-		RBevelImageScaled(img, RBEV_RAISED2, WMScaled(1));
-
-		if (!RConvertImage(scr->rcontext, img, title))
-			wwarning(_("error rendering image:%s"), RMessageForError(RErrorCode));
+		*title = makeTitlePart(&paint, 0, width, height);
 	}
 
-	RReleaseImage(img);
+	wPaintRelease(&paint);
 }
 
 static void
 renderResizebarTexture(WScreen * scr, WTexture * texture, int width, int height, int cwidth, Pixmap * pmap)
 {
-	RImage *img;
+	WPaint paint;
 	RColor light;
 	RColor dark;
 	int s1, s2;
 
 	*pmap = None;
 
-	img = wTextureRenderImage(texture, width, height, WREL_FLAT);
-	if (!img) {
+	if (!wPaintTexture(&paint, scr, texture, width, height, WREL_FLAT)) {
 		wwarning(_("could not render texture: %s"), RMessageForError(RErrorCode));
 		return;
 	}
@@ -766,27 +739,24 @@ renderResizebarTexture(WScreen * scr, WTexture * texture, int width, int height,
 	s1 = WMScaled(1);
 	s2 = WMScaled(2);
 
-	wOperateScaledLine(img, RSubtractOperation, 0, 0, width - s1, 0, &dark);
-	wOperateScaledLine(img, RAddOperation, 0, s1, width - s1, s1, &light);
+	wPaintOperateLine(&paint, RSubtractOperation, 0, 0, width - s1, 0, &dark);
+	wPaintOperateLine(&paint, RAddOperation, 0, s1, width - s1, s1, &light);
 
-	wOperateScaledLine(img, RSubtractOperation, cwidth, s2, cwidth, height - s1, &dark);
-	wOperateScaledLine(img, RAddOperation, cwidth + s1, s2, cwidth + s1, height - s1, &light);
+	wPaintOperateLine(&paint, RSubtractOperation, cwidth, s2, cwidth, height - s1, &dark);
+	wPaintOperateLine(&paint, RAddOperation, cwidth + s1, s2, cwidth + s1, height - s1, &light);
 
 	if (width > s1)
-		wOperateScaledLine(img, RSubtractOperation, width - cwidth - s2, s2,
+		wPaintOperateLine(&paint, RSubtractOperation, width - cwidth - s2, s2,
 			     width - cwidth - s2, height - s1, &dark);
-	wOperateScaledLine(img, RAddOperation, width - cwidth - s1, s2, width - cwidth - s1, height - s1, &light);
+	wPaintOperateLine(&paint, RAddOperation, width - cwidth - s1, s2, width - cwidth - s1, height - s1, &light);
 
 #ifdef SHADOW_RESIZEBAR
-	wOperateScaledLine(img, RAddOperation, 0, s1, 0, height - s1, &light);
-	wOperateScaledLine(img, RSubtractOperation, width - s1, s1, width - s1, height - s1, &dark);
-	wOperateScaledLine(img, RSubtractOperation, 0, height - s1, width - s1, height - s1, &dark);
+	wPaintOperateLine(&paint, RAddOperation, 0, s1, 0, height - s1, &light);
+	wPaintOperateLine(&paint, RSubtractOperation, width - s1, s1, width - s1, height - s1, &dark);
+	wPaintOperateLine(&paint, RSubtractOperation, 0, height - s1, width - s1, height - s1, &dark);
 #endif				/* SHADOW_RESIZEBAR */
 
-	if (!RConvertImage(scr->rcontext, img, pmap))
-		wwarning(_("error rendering image: %s"), RMessageForError(RErrorCode));
-
-	RReleaseImage(img);
+	*pmap = wPaintFinish(&paint);
 }
 
 static void updateTexture(WFrameWindow * fwin)

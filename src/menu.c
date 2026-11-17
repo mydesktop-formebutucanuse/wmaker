@@ -392,8 +392,8 @@ void wMenuRemoveItem(WMenu * menu, int index)
 
 static Pixmap renderTexture(WMenu * menu)
 {
-	RImage *img;
-	Pixmap pix;
+	WPaint paint;
+	Bool painted;
 	int i;
 	RColor light;
 	RColor dark;
@@ -402,11 +402,11 @@ static Pixmap renderTexture(WMenu * menu)
 	WTexture *texture = scr->menu_item_texture;
 
 	if (wPreferences.menu_style == MS_NORMAL) {
-		img = wTextureRenderImage(texture, menu->menu->width, menu->entry_height, WREL_MENUENTRY);
+		painted = wPaintTexture(&paint, scr, texture, menu->menu->width, menu->entry_height, WREL_MENUENTRY);
 	} else {
-		img = wTextureRenderImage(texture, menu->menu->width, menu->menu->height + WMScaled(1), WREL_MENUENTRY);
+		painted = wPaintTexture(&paint, scr, texture, menu->menu->width, menu->menu->height + WMScaled(1), WREL_MENUENTRY);
 	}
-	if (!img) {
+	if (!painted) {
 		wwarning(_("could not render texture: %s"), RMessageForError(RErrorCode));
 
 		return None;
@@ -423,22 +423,17 @@ static Pixmap renderTexture(WMenu * menu)
 		mid.red = mid.green = mid.blue = 40;
 
 		for (i = 1; i < menu->entry_no; i++) {
-			wOperateScaledLine(img, RSubtractOperation, 0, i * menu->entry_height - WMScaled(2),
+			wPaintOperateLine(&paint, RSubtractOperation, 0, i * menu->entry_height - WMScaled(2),
 				     menu->menu->width - WMScaled(1), i * menu->entry_height - WMScaled(2), &mid);
 
-			wDrawScaledImageLine(img, 0, i * menu->entry_height - WMScaled(1),
+			wPaintDrawLine(&paint, 0, i * menu->entry_height - WMScaled(1),
 				  menu->menu->width - WMScaled(1), i * menu->entry_height - WMScaled(1), &dark);
 
-			wOperateScaledLine(img, RAddOperation, 0, i * menu->entry_height,
+			wPaintOperateLine(&paint, RAddOperation, 0, i * menu->entry_height,
 				     menu->menu->width - WMScaled(1), i * menu->entry_height, &light);
 		}
 	}
-	if (!RConvertImage(scr->rcontext, img, &pix)) {
-		wwarning(_("error rendering image:%s"), RMessageForError(RErrorCode));
-	}
-	RReleaseImage(img);
-
-	return pix;
+	return wPaintFinish(&paint);
 }
 
 static void updateTexture(WMenu * menu)

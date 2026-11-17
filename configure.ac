@@ -711,6 +711,16 @@ AC_SUBST(XFT_CFLAGS)
 AC_SUBST(XFT_LIBS)
 
 
+dnl XRender, which Xft needs: Window Maker scales pictures with it
+dnl ==============================================================
+PKG_CHECK_MODULES([XRENDER], [xrender],
+    [], dnl Module found, nothing to do
+    [XRENDER_CFLAGS=""
+     XRENDER_LIBS="-lXrender"])
+AC_SUBST(XRENDER_CFLAGS)
+AC_SUBST(XRENDER_LIBS)
+
+
 dnl PANGO support
 dnl =============
 dnl The libray can be used by WINGs to get better support on UTF-8 for i18n

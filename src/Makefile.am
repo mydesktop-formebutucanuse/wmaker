@@ -161,6 +161,7 @@ AM_CFLAGS = @PANGO_CFLAGS@
 AM_CPPFLAGS = $(DFLAGS) \
 	-I$(top_builddir)/wrlib \
 	-I$(top_srcdir)/WINGs -I$(top_builddir)/WINGs \
+	@XRENDER_CFLAGS@ \
 	@HEADER_SEARCH_PATH@
 
 
@@ -172,6 +173,7 @@ wmaker_LDADD = \
 	@LIBXRANDR@ \
 	@LIBXINERAMA@ \
 	@LIBXKBFILE@ \
+	@XRENDER_LIBS@ \
 	@XLIBS@ \
 	@LIBM@
 

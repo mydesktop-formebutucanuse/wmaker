@@ -259,6 +259,17 @@ void DispatchEvent(XEvent * event)
 	case MappingNotify:
 		if (event->xmapping.request == MappingKeyboard || event->xmapping.request == MappingModifier)
 			XRefreshKeyboardMapping(&event->xmapping);
+		if (event->xmapping.request == MappingKeyboard) {
+			int i;
+
+			/* the keys of the shortcuts may show other symbols */
+			for (i = 0; i < w_global.screen_count; i++) {
+				WScreen *scr = wScreenWithNumber(i);
+
+				if (scr)
+					wWorkspaceMenuUpdateShortcuts(scr);
+			}
+		}
 		break;
 
 	case FocusIn:
@@ -1083,6 +1094,13 @@ static void handlePropertyNotify(XEvent * event)
 	 * those.
 	 */
 	if (!wClientIsWatchedProperty(event->xproperty.atom))
+		return;
+
+	/*
+	 * Names are read once the events received are handled, by then the
+	 * window may be gone, which is checked then
+	 */
+	if (wClientNoteNameChange(event->xproperty.window, event->xproperty.atom))
 		return;
 
 	wwin = wWindowFor(event->xproperty.window);
