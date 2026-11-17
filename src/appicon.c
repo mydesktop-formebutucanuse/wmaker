@@ -402,6 +402,18 @@ static void updateDockNumbers(WScreen *scr)
 }
 #endif				/* WS_INDICATOR */
 
+/*
+ * Tells if the icon may be on the screen, which the icons of a dock that is
+ * hidden or collapsed are not, the one of the dock itself excepted
+ */
+Bool wAppIconIsShown(WAppIcon *aicon)
+{
+	if (aicon == NULL || aicon->dock == NULL || aicon->dock->icon_array[0] == aicon)
+		return True;
+
+	return aicon->dock->mapped && !aicon->dock->collapsed;
+}
+
 void wAppIconPaint(WAppIcon *aicon)
 {
 	WApplication *wapp;

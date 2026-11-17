@@ -45,7 +45,6 @@ typedef struct WIcon {
 	unsigned int 	tile_type:4;
 	unsigned int 	show_title:1;
 	unsigned int 	selected:1;
-	unsigned int	step:3;		/* selection cycle step */
 	unsigned int	shadowed:1;	/* If the icon is to be blured */
 	unsigned int 	mapped:1;
 	unsigned int	highlighted:1;
@@ -53,9 +52,6 @@ typedef struct WIcon {
 
 	Pixmap 		pixmap;
 	Pixmap		mini_preview;
-
-	WMHandlerID	handlerID;	/* timer handler ID for cycling select
-					 * color */
 } WIcon;
 
 WIcon *icon_create_for_dock(WScreen *scr, const char *command, const char *wm_instance, const char *wm_class, int tile);
