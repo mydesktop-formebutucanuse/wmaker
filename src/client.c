@@ -283,6 +283,30 @@ void wClientKill(WWindow * wwin)
 }
 
 /*
+ * Whether wClientCheckProperty() does anything for a property; keep the two
+ * in step. Clients change many properties Window Maker never reads, and
+ * Window Maker gets PropertyNotify for the ones it sets on clients itself.
+ */
+Bool wClientIsWatchedProperty(Atom atom)
+{
+	switch (atom) {
+	case XA_WM_NAME:
+	case XA_WM_ICON_NAME:
+	case XA_WM_COMMAND:
+	case XA_WM_HINTS:
+	case XA_WM_NORMAL_HINTS:
+	case XA_WM_TRANSIENT_FOR:
+		return True;
+	default:
+		return atom == w_global.atom.wm.protocols
+		    || atom == w_global.atom.wm.colormap_windows
+		    || atom == w_global.atom.wmaker.menu
+		    || atom == w_global.atom.gnustep.wm_attr
+		    || wNETWMIsClientHint(atom);
+	}
+}
+
+/*
  *----------------------------------------------------------------------
  * wClientCheckProperty--
  * 	Handles PropertyNotify'es, verifying which property was

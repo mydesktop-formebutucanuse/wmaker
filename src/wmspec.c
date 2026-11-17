@@ -1923,6 +1923,16 @@ Bool wNETWMProcessClientMessage(XClientMessageEvent *event)
 	return False;
 }
 
+/* the properties wNETWMCheckClientHintChange() handles; keep the two in step */
+Bool wNETWMIsClientHint(Atom atom)
+{
+	return atom == net_wm_strut || atom == net_wm_strut_partial
+	    || atom == net_wm_handled_icons || atom == net_wm_icon_geometry
+	    || atom == net_wm_window_type || atom == net_wm_name
+	    || atom == net_wm_icon_name || atom == net_wm_icon
+	    || atom == net_wm_window_opacity;
+}
+
 void wNETWMCheckClientHintChange(WWindow *wwin, XPropertyEvent *event)
 {
 #ifdef DEBUG_WMSPEC

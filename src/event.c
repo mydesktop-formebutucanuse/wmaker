@@ -1077,6 +1077,14 @@ static void handlePropertyNotify(XEvent * event)
 	int ji;
 	unsigned int ju;
 
+	/*
+	 * Most changes are of properties nothing here reads, often ones Window
+	 * Maker set itself, so don't spend a round trip checking the window for
+	 * those.
+	 */
+	if (!wClientIsWatchedProperty(event->xproperty.atom))
+		return;
+
 	wwin = wWindowFor(event->xproperty.window);
 	if (wwin) {
 		if (!XGetGeometry(dpy, wwin->client_win, &jr, &ji, &ji, &ju, &ju, &ju, &ju)) {
