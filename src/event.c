@@ -259,6 +259,17 @@ void DispatchEvent(XEvent * event)
 	case MappingNotify:
 		if (event->xmapping.request == MappingKeyboard || event->xmapping.request == MappingModifier)
 			XRefreshKeyboardMapping(&event->xmapping);
+		if (event->xmapping.request == MappingKeyboard) {
+			int i;
+
+			/* the keys of the shortcuts may show other symbols */
+			for (i = 0; i < w_global.screen_count; i++) {
+				WScreen *scr = wScreenWithNumber(i);
+
+				if (scr)
+					wWorkspaceMenuUpdateShortcuts(scr);
+			}
+		}
 		break;
 
 	case FocusIn:

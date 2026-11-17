@@ -799,6 +799,52 @@ WMenu *wWorkspaceMenuMake(WScreen * scr, Bool titled)
 	return wsmenu;
 }
 
+/*
+ * Only the workspaces of the group of 10 of the current one have a shortcut
+ * label. Making one asks the X server for the keyboard mapping, so a label
+ * is kept as long as its workspace stays in the group.
+ */
+static void updateShortcutLabels(WScreen *scr, WMenu *menu)
+{
+	int i;
+
+	for (i = 0; i < scr->workspace_count; i++) {
+		WMenuEntry *entry = menu->entries[i + MC_WORKSPACE1];
+		Bool labeled = (i / 10 == scr->current_workspace / 10);
+
+		if (!labeled && entry->rtext) {
+			wfree(entry->rtext);
+			entry->rtext = NULL;
+		} else if (labeled && !entry->rtext) {
+			entry->rtext = GetShortcutKey(wKeyBindings[WKBD_WORKSPACE1 + (i % 10)]);
+		}
+	}
+}
+
+/* The key bindings or the keyboard mapping changed: make the shortcut labels again */
+void wWorkspaceMenuUpdateShortcuts(WScreen *scr)
+{
+	WMenu *menus[] = { scr->workspace_menu, scr->clip_ws_menu };
+	unsigned int i;
+	int j;
+
+	for (i = 0; i < wlengthof(menus); i++) {
+		WMenu *menu = menus[i];
+
+		if (!menu)
+			continue;
+
+		for (j = MC_LAST_USED; j < menu->entry_no; j++) {
+			if (menu->entries[j]->rtext) {
+				wfree(menu->entries[j]->rtext);
+				menu->entries[j]->rtext = NULL;
+			}
+		}
+		menu->entries[MC_LAST_USED]->rtext = GetShortcutKey(wKeyBindings[WKBD_LASTWORKSPACE]);
+		wWorkspaceMenuUpdate(scr, menu);
+	}
+}
+
 void wWorkspaceMenuUpdate(WScreen * scr, WMenu * menu)
 {
 	int i;
@@ -806,9 +852,12 @@ void wWorkspaceMenuUpdate(WScreen * scr, WMenu * menu)
 	char title[MAX_WORKSPACENAME_WIDTH + 1];
 	WMenuEntry *entry;
 	int tmp;
+	Bool shown;
 
 	if (!menu)
 		return;
+
+	shown = menu->flags.mapped || menu->brother->flags.mapped;
 
 	if (menu->entry_no < scr->workspace_count + MC_WORKSPACE1) {
 		/* new workspace(s) added */
@@ -830,16 +879,25 @@ void wWorkspaceMenuUpdate(WScreen * scr, WMenu * menu)
 			wMenuRemoveItem(menu, i);
 	}
 
-	for (i = 0; i < scr->workspace_count; i++) {
-		/* workspace shortcut labels */
-		if (i / 10 == scr->current_workspace / 10)
-			menu->entries[i + MC_WORKSPACE1]->rtext = GetShortcutKey(wKeyBindings[WKBD_WORKSPACE1 + (i % 10)]);
-		else
-			menu->entries[i + MC_WORKSPACE1]->rtext = NULL;
-
+	updateShortcutLabels(scr, menu);
+	for (i = 0; i < scr->workspace_count; i++)
 		menu->entries[i + MC_WORKSPACE1]->flags.indicator_on = 0;
-	}
 	menu->entries[scr->current_workspace + MC_WORKSPACE1]->flags.indicator_on = 1;
+
+	if (!shown) {
+		/*
+		 * Nothing to show: the menu is laid out and painted when it is
+		 * mapped, instead of for every workspace change.
+		 */
+		menu->flags.realized = 0;
+		menu->brother->flags.realized = 0;
+		menu->entries[MC_DESTROY_LAST]->flags.enabled =
+			(scr->current_workspace != scr->workspace_count - 1);
+		menu->entries[MC_LAST_USED]->flags.enabled =
+			(scr->workspace_count && scr->last_workspace != scr->current_workspace);
+		return;
+	}
+
 	wMenuRealize(menu);
 
 	/* don't let user destroy current workspace */
