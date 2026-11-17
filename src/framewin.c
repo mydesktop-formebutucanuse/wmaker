@@ -648,6 +648,134 @@ void wFrameWindowShowButton(WFrameWindow * fwin, int flags)
 	}
 }
 
+/*
+ * The gradients that change only from top to bottom are the same in every
+ * column of the title bar, with its bevel, but for the sides, and the ones
+ * that change only from left to right are the same in every row: a strip
+ * of them is rendered and sent to the X server, which repeats its middle
+ * to fill the rest, instead of an image of the whole title bar.
+ */
+enum {
+	TILE_NONE,
+	TILE_COLUMNS,		/* every column is the same */
+	TILE_ROWS		/* every row is the same */
+};
+
+/* the columns or rows of a strip that are repeated, between the sides of the bevel */
+#define TILE_SPAN 1
+
+static int textureTiling(WScreen *scr, WTexture *texture)
+{
+	/* a dithered image changes from one pixel to the next */
+	if (scr->rcontext->attribs->render_mode != RBestMatchRendering)
+		return TILE_NONE;
+
+	switch (texture->any.type) {
+	case WTEX_VGRADIENT:
+	case WTEX_MVGRADIENT:
+	case WTEX_IGRADIENT:
+		return TILE_COLUMNS;
+
+	case WTEX_HGRADIENT:
+	case WTEX_MHGRADIENT:
+		return TILE_ROWS;
+
+	default:
+		return TILE_NONE;
+	}
+}
+
+/*
+ * Make the pixmap of the part of the title bar from x to x + width, with
+ * the bevel, from the image of the texture: as wide as the bar, or for
+ * TILE_COLUMNS a strip as high as the bar and for TILE_ROWS a strip as
+ * wide as the bar.
+ */
+static Pixmap makeTitlePart(WScreen *scr, RImage *image, int tiling, int x, int width, int height)
+{
+	RContext *rc = scr->rcontext;
+	GC gc = scr->copy_gc;
+	int t = WMScaled(1);
+	RImage *part;
+	Pixmap strip, tile, pixmap;
+	XGCValues gcv;
+	int sw, sh;
+	Bool tiled;
+
+	if (width <= 0 || height <= 0)
+		return None;
+
+	if (tiling == TILE_COLUMNS) {
+		x = 0;
+		sw = WMIN(width, image->width);
+		sh = height;
+	} else {
+		sw = width;
+		sh = WMIN(height, image->height);
+	}
+
+	part = RGetSubImage(image, x, 0, sw, sh);
+	if (!part) {
+		wwarning(_("error rendering image:%s"), RMessageForError(RErrorCode));
+		return None;
+	}
+	RBevelImageScaled(part, RBEV_RAISED2, t);
+	if (!RConvertImage(rc, part, &strip)) {
+		wwarning(_("error rendering image:%s"), RMessageForError(RErrorCode));
+		strip = None;
+	}
+	sw = part->width;
+	sh = part->height;
+	RReleaseImage(part);
+
+	/* a strip as big as the part is the part */
+	if (tiling == TILE_COLUMNS)
+		tiled = sw < width && sh == height;
+	else if (tiling == TILE_ROWS)
+		tiled = sh < height && sw == width;
+	else
+		tiled = False;
+	if (!tiled || strip == None)
+		return strip;
+
+	/*
+	 * The strip has the sides of the bevel, t pixels at the left or top
+	 * and 2 * t at the right or bottom, and between them the span that
+	 * fills the rest.
+	 */
+	pixmap = XCreatePixmap(dpy, rc->drawable, width, height, rc->depth);
+	XSetClipMask(dpy, gc, None);
+	gcv.fill_style = FillTiled;
+	if (tiling == TILE_COLUMNS) {
+		XCopyArea(dpy, strip, pixmap, gc, 0, 0, t, height, 0, 0);
+		XCopyArea(dpy, strip, pixmap, gc, sw - 2 * t, 0, 2 * t, height, width - 2 * t, 0);
+
+		tile = XCreatePixmap(dpy, rc->drawable, TILE_SPAN, height, rc->depth);
+		XCopyArea(dpy, strip, tile, gc, t, 0, TILE_SPAN, height, 0, 0);
+		gcv.tile = tile;
+		gcv.ts_x_origin = t;
+		gcv.ts_y_origin = 0;
+		XChangeGC(dpy, gc, GCFillStyle | GCTile | GCTileStipXOrigin | GCTileStipYOrigin, &gcv);
+		XFillRectangle(dpy, pixmap, gc, t, 0, width - 3 * t, height);
+	} else {
+		XCopyArea(dpy, strip, pixmap, gc, 0, 0, width, t, 0, 0);
+		XCopyArea(dpy, strip, pixmap, gc, 0, sh - 2 * t, width, 2 * t, 0, height - 2 * t);
+
+		tile = XCreatePixmap(dpy, rc->drawable, width, TILE_SPAN, rc->depth);
+		XCopyArea(dpy, strip, tile, gc, 0, t, width, TILE_SPAN, 0, 0);
+		gcv.tile = tile;
+		gcv.ts_x_origin = 0;
+		gcv.ts_y_origin = t;
+		XChangeGC(dpy, gc, GCFillStyle | GCTile | GCTileStipXOrigin | GCTileStipYOrigin, &gcv);
+		XFillRectangle(dpy, pixmap, gc, 0, t, width, height - 3 * t);
+	}
+	XSetFillStyle(dpy, gc, FillSolid);
+	XFreePixmap(dpy, tile);
+	XFreePixmap(dpy, strip);
+
+	return pixmap;
+}
+
 static void
 #ifdef XKB_BUTTON_HINT
 renderTexture(WScreen * scr, WTexture * texture, int width, int height,
@@ -659,10 +787,7 @@ renderTexture(WScreen * scr, WTexture * texture, int width, int height,
 #endif
 {
 	RImage *img;
-	RImage *limg, *rimg, *mimg;
-#ifdef XKB_BUTTON_HINT
-	RImage *timg;
-#endif
+	int tiling, span;
 	int x, w;
 
 	*title = None;
@@ -672,82 +797,46 @@ renderTexture(WScreen * scr, WTexture * texture, int width, int height,
 	*languagebutton = None;
 #endif
 
-	img = wTextureRenderImage(texture, width, height, WREL_FLAT);
+	tiling = textureTiling(scr, texture);
+	if (bheight != height)
+		tiling = TILE_NONE;
+	span = 3 * WMScaled(1) + TILE_SPAN;
+
+	if (tiling == TILE_COLUMNS)
+		img = wTextureRenderImage(texture, WMIN(width, span), height, WREL_FLAT);
+	else if (tiling == TILE_ROWS)
+		img = wTextureRenderImage(texture, width, WMIN(height, span), WREL_FLAT);
+	else
+		img = wTextureRenderImage(texture, width, height, WREL_FLAT);
 	if (!img) {
 		wwarning(_("could not render texture: %s"), RMessageForError(RErrorCode));
 		return;
 	}
 
 	if (wPreferences.new_style == TS_NEW) {
-		if (left)
-			limg = RGetSubImage(img, 0, 0, bwidth, bheight);
-		else
-			limg = NULL;
-
 		x = 0;
-		w = img->width;
+		w = width;
 
-#ifdef XKB_BUTTON_HINT
-		if (language)
-			timg = RGetSubImage(img, bwidth * left, 0, bwidth, bheight);
-		else
-			timg = NULL;
-#endif
-
-		if (limg) {
-			RBevelImageScaled(limg, RBEV_RAISED2, WMScaled(1));
-			if (!RConvertImage(scr->rcontext, limg, lbutton))
-				wwarning(_("error rendering image:%s"), RMessageForError(RErrorCode));
-
-			x += limg->width;
-			w -= limg->width;
-			RReleaseImage(limg);
+		if (left) {
+			*lbutton = makeTitlePart(scr, img, tiling, 0, WMIN(bwidth, width), bheight);
+			x += WMIN(bwidth, width);
+			w -= WMIN(bwidth, width);
 		}
 #ifdef XKB_BUTTON_HINT
-		if (timg) {
-			RBevelImageScaled(timg, RBEV_RAISED2, WMScaled(1));
-			if (!RConvertImage(scr->rcontext, timg, languagebutton))
-				wwarning(_("error rendering image:%s"), RMessageForError(RErrorCode));
-
-			x += timg->width;
-			w -= timg->width;
-			RReleaseImage(timg);
+		if (language && x < width) {
+			*languagebutton = makeTitlePart(scr, img, tiling, x, WMIN(bwidth, width - x), bheight);
+			w -= WMIN(bwidth, width - x);
+			x += WMIN(bwidth, width - x);
 		}
 #endif
-
-		if (right)
-			rimg = RGetSubImage(img, width - bwidth, 0, bwidth, bheight);
-		else
-			rimg = NULL;
-
-		if (rimg) {
-			RBevelImageScaled(rimg, RBEV_RAISED2, WMScaled(1));
-			if (!RConvertImage(scr->rcontext, rimg, rbutton))
-				wwarning(_("error rendering image:%s"), RMessageForError(RErrorCode));
-
-			w -= rimg->width;
-			RReleaseImage(rimg);
+		if (right) {
+			*rbutton = makeTitlePart(scr, img, tiling, width - bwidth, bwidth, bheight);
+			w -= bwidth;
 		}
 
-		if (w != width) {
-			mimg = RGetSubImage(img, x, 0, w, img->height);
-			RBevelImageScaled(mimg, RBEV_RAISED2, WMScaled(1));
-
-			if (!RConvertImage(scr->rcontext, mimg, title))
-				wwarning(_("error rendering image:%s"), RMessageForError(RErrorCode));
-
-			RReleaseImage(mimg);
-		} else {
-			RBevelImageScaled(img, RBEV_RAISED2, WMScaled(1));
-
-			if (!RConvertImage(scr->rcontext, img, title))
-				wwarning(_("error rendering image:%s"), RMessageForError(RErrorCode));
-		}
+		*title = makeTitlePart(scr, img, tiling, x, w, height);
 	} else {
-		RBevelImageScaled(img, RBEV_RAISED2, WMScaled(1));
-
-		if (!RConvertImage(scr->rcontext, img, title))
-			wwarning(_("error rendering image:%s"), RMessageForError(RErrorCode));
+		*title = makeTitlePart(scr, img, tiling, 0, width, height);
 	}
 
 	RReleaseImage(img);
