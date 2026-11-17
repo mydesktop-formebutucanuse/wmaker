@@ -24,6 +24,7 @@
 #ifdef USE_XSHAPE
 #include <X11/extensions/shape.h>
 #endif
+#include <X11/extensions/Xrender.h>
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -213,13 +214,36 @@ Bool wWorkspaceDelete(WScreen * scr, int workspace)
  * is now drawn at the monitor refresh rate */
 #define WORKSPACE_NAME_FADE_TIME (10UL * WORKSPACE_NAME_FADE_DELAY * 1000UL)
 
+/*
+ * The name fades out on the X server: what was under the window when it was
+ * mapped and the name stay there as pictures, and every frame of the fade is
+ * a composition of the name over that background with the Render extension,
+ * into a pixmap that the window then shows. Nothing is read back from the
+ * server nor sent to it but a few requests per frame.
+ */
 typedef struct WorkspaceNameData {
 	Bool fading;
 	WAnimation fade;
-	RImage *back;
-	RImage *text;
+	int width, height;
+	Picture back;		/* what was under the window */
+	Picture text;		/* the name */
+	Pixmap frame;		/* the frame shown while it fades */
+	Picture frame_pict;
 	time_t timeout;
 } WorkspaceNameData;
+
+static void freeWorkspaceNameData(WorkspaceNameData *data)
+{
+	if (data->back != None)
+		XRenderFreePicture(dpy, data->back);
+	if (data->text != None)
+		XRenderFreePicture(dpy, data->text);
+	if (data->frame_pict != None)
+		XRenderFreePicture(dpy, data->frame_pict);
+	if (data->frame != None)
+		XFreePixmap(dpy, data->frame);
+	wfree(data);
+}
 
 static void hideWorkspaceName(void *data)
 {
@@ -243,31 +267,31 @@ static void hideWorkspaceName(void *data)
 		XUnmapWindow(dpy, scr->workspace_name);
 
 		if (scr->workspace_name_data) {
-			RReleaseImage(scr->workspace_name_data->back);
-			RReleaseImage(scr->workspace_name_data->text);
-			wfree(scr->workspace_name_data);
-
+			freeWorkspaceNameData(scr->workspace_name_data);
 			scr->workspace_name_data = NULL;
 		}
 		scr->workspace_name_timer = NULL;
 	} else {
-		RImage *img = RCloneImage(wdata->back);
-		Pixmap pix;
+		/* the opacity goes by the 256 steps it had when the frames were blended by wraster */
+		unsigned short opacity = (unsigned short)(255 * (1.0F - progress)) * 0x101;
+		XRenderColor color = { 0, 0, 0, opacity };
+		Picture mask;
 		int delay = (wdata->fade.interval + 500) / 1000;
 
 		if (delay < 1)
 			delay = 1;
 		scr->workspace_name_timer = WMAddTimerHandler(delay, hideWorkspaceName, scr);
 
-		RCombineImagesWithOpaqueness(img, wdata->text, (int)(255 * (1.0F - progress)));
+		mask = XRenderCreateSolidFill(dpy, &color);
+		XRenderComposite(dpy, PictOpSrc, wdata->back, None, wdata->frame_pict,
+		                 0, 0, 0, 0, 0, 0, wdata->width, wdata->height);
+		XRenderComposite(dpy, PictOpOver, wdata->text, mask, wdata->frame_pict,
+		                 0, 0, 0, 0, 0, 0, wdata->width, wdata->height);
+		XRenderFreePicture(dpy, mask);
 
-		RConvertImage(scr->rcontext, img, &pix);
-
-		RReleaseImage(img);
-
-		XSetWindowBackgroundPixmap(dpy, scr->workspace_name, pix);
+		/* set again after every frame drawn: the server may have copied the pixmap */
+		XSetWindowBackgroundPixmap(dpy, scr->workspace_name, wdata->frame);
 		XClearWindow(dpy, scr->workspace_name);
-		XFreePixmap(dpy, pix);
 		XFlush(dpy);
 	}
 }
@@ -275,7 +299,7 @@ static void hideWorkspaceName(void *data)
 static void showWorkspaceName(WScreen * scr, int workspace)
 {
 	WorkspaceNameData *data;
-	RXImage *ximg;
+	XRenderPictFormat *format, *root_format;
 	Pixmap text, mask;
 	int w, h;
 	int px, py;
@@ -298,14 +322,14 @@ static void showWorkspaceName(WScreen * scr, int workspace)
 	}
 	scr->workspace_name_timer = WMAddTimerHandler(WORKSPACE_NAME_DELAY, hideWorkspaceName, scr);
 
-	if (scr->workspace_name_data) {
-		RReleaseImage(scr->workspace_name_data->back);
-		RReleaseImage(scr->workspace_name_data->text);
-		wfree(scr->workspace_name_data);
-	}
+	if (scr->workspace_name_data)
+		freeWorkspaceNameData(scr->workspace_name_data);
 
 	data = wmalloc(sizeof(WorkspaceNameData));
-	data->back = NULL;
+	data->back = None;
+	data->text = None;
+	data->frame = None;
+	data->frame_pict = None;
 
 	w = WMWidthOfString(scr->workspace_name_font, name, len);
 	h = WMFontHeight(scr->workspace_name_font);
@@ -401,31 +425,40 @@ static void showWorkspaceName(WScreen * scr, int workspace)
 	XSetWindowBackgroundPixmap(dpy, scr->workspace_name, text);
 	XClearWindow(dpy, scr->workspace_name);
 
-	data->text = RCreateImageFromDrawable(scr->rcontext, text, None);
+	/* keep the name and what is under the window, before it is mapped, for the fade */
+	format = XRenderFindVisualFormat(dpy, scr->w_visual);
+	root_format = XRenderFindVisualFormat(dpy, DefaultVisual(dpy, scr->screen));
+	if (format && root_format) {
+		XRenderPictureAttributes pa;
+		Picture root;
+		Pixmap back;
+
+		data->width = w + WMScaled(4);
+		data->height = h + WMScaled(4);
+
+		pa.subwindow_mode = IncludeInferiors;
+		root = XRenderCreatePicture(dpy, scr->root_win, root_format, CPSubwindowMode, &pa);
+		back = XCreatePixmap(dpy, scr->w_win, data->width, data->height, scr->w_depth);
+		data->back = XRenderCreatePicture(dpy, back, format, 0, NULL);
+		XRenderComposite(dpy, PictOpSrc, root, None, data->back,
+		                 px, py, 0, 0, 0, 0, data->width, data->height);
+		XRenderFreePicture(dpy, root);
+		/* the pictures keep their pixmaps */
+		XFreePixmap(dpy, back);
+
+		data->text = XRenderCreatePicture(dpy, text, format, 0, NULL);
+		data->frame = XCreatePixmap(dpy, scr->w_win, data->width, data->height, scr->w_depth);
+		data->frame_pict = XRenderCreatePicture(dpy, data->frame, format, 0, NULL);
+	}
 
 	XFreePixmap(dpy, text);
 	XFreePixmap(dpy, mask);
 
-	if (!data->text) {
-		XMapRaised(dpy, scr->workspace_name);
-		XFlush(dpy);
-
-		goto erro;
-	}
-
-	ximg = RGetXImage(scr->rcontext, scr->root_win, px, py, data->text->width, data->text->height);
-	if (!ximg)
-		goto erro;
-
 	XMapRaised(dpy, scr->workspace_name);
 	XFlush(dpy);
 
-	data->back = RCreateImageFromXImage(scr->rcontext, ximg->image, NULL);
-	RDestroyXImage(scr->rcontext, ximg);
-
-	if (!data->back) {
+	if (data->back == None)
 		goto erro;
-	}
 
 	data->fading = False;
 
@@ -440,11 +473,7 @@ static void showWorkspaceName(WScreen * scr, int workspace)
 	if (scr->workspace_name_timer)
 		WMDeleteTimerHandler(scr->workspace_name_timer);
 
-	if (data->text)
-		RReleaseImage(data->text);
-	if (data->back)
-		RReleaseImage(data->back);
-	wfree(data);
+	freeWorkspaceNameData(data);
 
 	scr->workspace_name_data = NULL;
 
