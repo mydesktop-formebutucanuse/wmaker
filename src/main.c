@@ -500,11 +500,14 @@ static void inotifyWatchConfig(void)
 			   " a restart to take effect. Check your kernel!"));
 	} else {
 		watchPath = wdefaultspathfordomain("");
-		/* Add the watch; really we are only looking for modify events
-		 * but we might want more in the future so check all events for now.
-		 * The individual events are checked for in event.c.
+		/*
+		 * Add the watch, for the events that event.c reacts to: a file
+		 * that was written is closed, or is put in place of the old one.
+		 * Watching for everything had Window Maker told of each file that
+		 * anything opens or reads in there, and of each chunk written.
 		 */
-		w_global.inotify.wd_defaults = inotify_add_watch(w_global.inotify.fd_event_queue, watchPath, IN_ALL_EVENTS);
+		w_global.inotify.wd_defaults = inotify_add_watch(w_global.inotify.fd_event_queue, watchPath,
+		                                                IN_CLOSE_WRITE | IN_MOVED_TO | IN_CREATE | IN_DELETE_SELF);
 		if (w_global.inotify.wd_defaults < 0) {
 			wwarning(_("could not add an inotify watch on path %s."
 				   " Changes to the defaults database will require"

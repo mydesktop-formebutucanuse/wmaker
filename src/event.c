@@ -100,9 +100,6 @@ static void handleKeyPress(XEvent *event);
 static void handleFocusIn(XEvent *event);
 static void handleMotionNotify(XEvent *event);
 static void handleVisibilityNotify(XEvent *event);
-#ifdef HAVE_INOTIFY
-static void handle_inotify_events(void);
-#endif
 static void handle_selection_request(XSelectionRequestEvent *event);
 static void handle_selection_clear(XSelectionClearEvent *event);
 static void wdelete_death_handler(WMagicNumber id);
@@ -298,46 +295,66 @@ void DispatchEvent(XEvent * event)
 }
 
 #ifdef HAVE_INOTIFY
+/* Set when a file of the defaults database was written, until it is read again */
+static Bool inotify_reload_pending = False;
+static WMHandlerID inotify_input_handler = NULL;
+
+/* Stops watching the defaults database */
+void wInotifyStop(void)
+{
+	if (inotify_input_handler != NULL) {
+		WMDeleteInputHandler(inotify_input_handler);
+		inotify_input_handler = NULL;
+	}
+	if (w_global.inotify.fd_event_queue >= 0) {
+		close(w_global.inotify.fd_event_queue);
+		w_global.inotify.fd_event_queue = -1;
+	}
+}
+
 /*
  *----------------------------------------------------------------------
  * handle_inotify_events-
- * 	Check for inotify events
+ * 	Reads the inotify events that are there
  *
- * Returns:
- * 	After reading events for the given file descriptor (fd) and
- *     watch descriptor (wd)
- *
- * Side effects:
- * 	Calls wDefaultsCheckDomains if config database is updated
+ * It is called when there is something to read on the descriptor, which is
+ * waited for together with the X events, in whatever loop that waits for
+ * them. So the files are not read from here, where a menu may be open or a
+ * window being moved: what changed is only taken note of, for
+ * inotify_reload() to be called by the main loop.
  *----------------------------------------------------------------------
  */
-static void handle_inotify_events(void)
+static void handle_inotify_events(int fd, int mask, void *cdata)
 {
 	ssize_t eventQLength;
 	size_t i = 0;
 	/* Make room for at lease 5 simultaneous events, with path + filenames */
 	char buff[ (sizeof(struct inotify_event) + NAME_MAX + 1) * 5 ];
-	/* Check config only once per read of the event queue */
-	int oneShotFlag = 0;
+
+	/* Parameter not used, but tell the compiler that it is ok */
+	(void) mask;
+	(void) cdata;
 
 	/*
 	 * Read off the queued events
 	 * queue overflow is not checked (IN_Q_OVERFLOW). In practise this should
-	 * not occur; the block is on Xevents, but a config file change will normally
-	 * occur as a result of an Xevent - so the event queue should never have more than
-	 * a few entries before a read().
+	 * not occur: what is left in the queue is read the next time around.
 	 */
-	eventQLength = read(w_global.inotify.fd_event_queue,
-	                    buff, sizeof(buff) );
+	eventQLength = read(fd, buff, sizeof(buff));
 
 	if (eventQLength < 0) {
+		if (errno == EINTR || errno == EAGAIN)
+			return;
+
 		wwarning(_("read problem when trying to get INotify event: %s"), strerror(errno));
+		/* it would be reported as readable again and again */
+		wInotifyStop();
 		return;
 	}
 
 	/* check what events occurred */
 	/* Should really check wd here too, but for now we only have one watch! */
-	while (i < eventQLength) {
+	while (i < (size_t) eventQLength) {
 		struct inotify_event *pevent = (struct inotify_event *)&buff[i];
 
 		/*
@@ -347,42 +364,30 @@ static void handle_inotify_events(void)
 			wwarning(_("the defaults database has been deleted!"
 				   " Restart Window Maker to create the database" " with the default settings"));
 
-			if (w_global.inotify.fd_event_queue >= 0) {
-				close(w_global.inotify.fd_event_queue);
-				w_global.inotify.fd_event_queue = -1;
-			}
+			wInotifyStop();
+			return;
 		}
 		if (pevent->mask & IN_UNMOUNT) {
 			wwarning(_("the unit containing the defaults database has"
 				   " been unmounted. Setting --static mode." " Any changes will not be saved."));
 
-			if (w_global.inotify.fd_event_queue >= 0) {
-				close(w_global.inotify.fd_event_queue);
-				w_global.inotify.fd_event_queue = -1;
-			}
-
 			wPreferences.flags.noupdates = 1;
+			wInotifyStop();
+			return;
 		}
 		/* Only react when a known config file inside the Defaults directory is affected */
 		if (pevent->len > 0) {
 			char *fname = pevent->name;
 			const char *allowed[] = { "WMRootMenu", "WMWindowAttributes",
 						  "WindowMaker", "WMState", "WMGLOBAL", NULL };
-			int i, matched = 0;
+			int j;
 
-			for (i = 0; allowed[i]; i++) {
-				if (strcmp(fname, allowed[i]) == 0) {
-					matched = 1;
+			for (j = 0; allowed[j]; j++) {
+				if (strcmp(fname, allowed[j]) == 0) {
+					/* the file was written, or another one was put in its place */
+					if (pevent->mask & (IN_CLOSE_WRITE | IN_MOVED_TO | IN_CREATE))
+						inotify_reload_pending = True;
 					break;
-				}
-			}
-
-			if (matched) {
-				/* react to events that indicate a file was created/moved/written */
-				if ((pevent->mask & (IN_MODIFY | IN_CLOSE_WRITE | IN_MOVED_TO | IN_CREATE)) && oneShotFlag == 0) {
-					wwarning(_("Inotify: Reading config files in defaults database."));
-					wDefaultsCheckDomains(NULL);
-					oneShotFlag = 1;
 				}
 			}
 		}
@@ -390,6 +395,17 @@ static void handle_inotify_events(void)
 		/* move to next event in the buffer */
 		i += sizeof(struct inotify_event) + pevent->len;
 	}
+}
+
+/* Reads the files of the defaults database that have changed */
+static void inotify_reload(void)
+{
+	int i;
+
+	inotify_reload_pending = False;
+
+	wwarning(_("Inotify: Reading config files in defaults database."));
+	wDefaultsCheckDomains(NULL);
 
 	for (i = 0; i < w_global.screen_count; i++) {
 		WScreen *scr = wScreenWithNumber(i);
@@ -415,13 +431,15 @@ static void handle_inotify_events(void)
 noreturn void EventLoop(void)
 {
 	XEvent event;
-#ifdef HAVE_INOTIFY
-	struct timeval time;
-	fd_set rfds;
-	int retVal = 0;
 
-	if (w_global.inotify.fd_event_queue < 0 || w_global.inotify.wd_defaults < 0)
-		retVal = -1;
+#ifdef HAVE_INOTIFY
+	/*
+	 * The descriptor is waited for along with the connection to the X
+	 * server, instead of being asked after each X event if it has something
+	 */
+	if (w_global.inotify.fd_event_queue >= 0 && w_global.inotify.wd_defaults >= 0)
+		inotify_input_handler = WMAddInputHandler(w_global.inotify.fd_event_queue, WIReadMask,
+		                                          handle_inotify_events, NULL);
 #endif
 
 	for (;;) {
@@ -429,26 +447,8 @@ noreturn void EventLoop(void)
 		WMNextEvent(dpy, &event);	/* Blocks here */
 		WMHandleEvent(&event);
 #ifdef HAVE_INOTIFY
-		if (retVal != -1) {
-			time.tv_sec = 0;
-			time.tv_usec = 0;
-			FD_ZERO(&rfds);
-			FD_SET(w_global.inotify.fd_event_queue, &rfds);
-
-			/* check for available read data from inotify - don't block! */
-			retVal = select(w_global.inotify.fd_event_queue + 1, &rfds, NULL, NULL, &time);
-
-			if (retVal < 0) {	/* an error has occurred */
-				wwarning(_("select failed. The inotify instance will be closed."
-					   " Changes to the defaults database will require"
-					   " a restart to take effect."));
-				close(w_global.inotify.fd_event_queue);
-				w_global.inotify.fd_event_queue = -1;
-				continue;
-			}
-			if (FD_ISSET(w_global.inotify.fd_event_queue, &rfds))
-				handle_inotify_events();
-		}
+		if (inotify_reload_pending)
+			inotify_reload();
 #endif
 	}
 }

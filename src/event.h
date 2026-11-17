@@ -35,6 +35,10 @@ void ProcessPendingEvents(void);
 WMagicNumber wAddDeathHandler(pid_t pid, WDeathHandler *callback, void *cdata);
 Bool IsDoubleClick(WScreen *scr, XEvent *event);
 
+#ifdef HAVE_INOTIFY
+void wInotifyStop(void);
+#endif
+
 /* called from the signal handler */
 void NotifyDeadProcess(pid_t pid, unsigned char status);
 
