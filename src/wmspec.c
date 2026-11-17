@@ -1933,6 +1933,16 @@ Bool wNETWMIsClientHint(Atom atom)
 	    || atom == net_wm_window_opacity;
 }
 
+Bool wNETWMIsNameHint(Atom atom)
+{
+	return atom == net_wm_name;
+}
+
+Bool wNETWMIsIconNameHint(Atom atom)
+{
+	return atom == net_wm_icon_name;
+}
+
 void wNETWMCheckClientHintChange(WWindow *wwin, XPropertyEvent *event)
 {
 #ifdef DEBUG_WMSPEC
@@ -1947,16 +1957,9 @@ void wNETWMCheckClientHintChange(WWindow *wwin, XPropertyEvent *event)
 		updateNetIconInfo(wwin);
 	} else if (event->atom == net_wm_window_type) {
 		updateWindowType(wwin);
-	} else if (event->atom == net_wm_name) {
-		char *name = wNETWMGetWindowName(wwin->client_win);
-		wWindowUpdateName(wwin, name);
-		if (name)
-			wfree(name);
-	} else if (event->atom == net_wm_icon_name) {
-		if (wwin->icon) {
-			wIconChangeTitle(wwin->icon, wwin);
-			wIconPaint(wwin->icon);
-		}
+	} else if (event->atom == net_wm_name || event->atom == net_wm_icon_name) {
+		/* names are read later, see wClientNoteNameChange() */
+		wClientNoteNameChange(event->window, event->atom);
 	} else if (event->atom == net_wm_icon) {
 		updateIconImage(wwin);
 	} else if (event->atom == net_wm_window_opacity) {

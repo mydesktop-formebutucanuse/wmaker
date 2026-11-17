@@ -307,6 +307,121 @@ Bool wClientIsWatchedProperty(Atom atom)
 }
 
 /*
+ * Name changes
+ *
+ * Clients often change their names many times in a row, and most set each
+ * name in two properties, the ICCCM and the EWMH one (WM_NAME and
+ * _NET_WM_NAME, WM_ICON_NAME and _NET_WM_ICON_NAME). The changes are noted,
+ * and applied once the events received are handled: each name is read and
+ * painted once.
+ */
+#define WM_NAME_CHANGED		1
+#define NET_WM_NAME_CHANGED	2
+#define ICON_NAME_CHANGED	4
+
+typedef struct NameChange {
+	Window window;
+	int changes;
+} NameChange;
+
+static NameChange *name_changes = NULL;
+static int name_change_count = 0;
+static int name_change_room = 0;
+static WMHandlerID name_change_handler = NULL;
+
+static void applyNameChange(WWindow *wwin, int changes)
+{
+	Bool title_changed = False;
+	char *name;
+
+	if (changes & NET_WM_NAME_CHANGED) {
+		/* _NET_WM_NAME wins over WM_NAME, while the client sets it */
+		name = wNETWMGetWindowName(wwin->client_win);
+		wwin->flags.net_has_title = (name != NULL);
+		if (name) {
+			wWindowUpdateName(wwin, name);
+			wfree(name);
+			title_changed = True;
+		} else {
+			changes |= WM_NAME_CHANGED;
+		}
+	}
+
+	if ((changes & WM_NAME_CHANGED) && !wwin->flags.net_has_title) {
+		if (wFetchName(dpy, wwin->client_win, &name)) {
+			wWindowUpdateName(wwin, name);
+			XFree(name);
+		} else {
+			wWindowUpdateName(wwin, NULL);
+		}
+		title_changed = True;
+	}
+
+	/* the miniwindow title is already updated with the window title */
+	if ((changes & ICON_NAME_CHANGED) && !title_changed && wwin->icon) {
+		wIconChangeTitle(wwin->icon, wwin);
+		wIconPaint(wwin->icon);
+	}
+}
+
+static void applyNameChanges(void *data)
+{
+	int i;
+
+	/* Parameter not used, but tell the compiler that it is ok */
+	(void) data;
+
+	name_change_handler = NULL;
+
+	for (i = 0; i < name_change_count; i++) {
+		WWindow *wwin = wWindowFor(name_changes[i].window);
+
+		/* the window may have been unmanaged meanwhile */
+		if (wwin && wwin->client_win == name_changes[i].window)
+			applyNameChange(wwin, name_changes[i].changes);
+	}
+	name_change_count = 0;
+}
+
+/*
+ * Notes the change of a name property of a window, to be applied when the
+ * events received are handled. Returns False for any other property.
+ */
+Bool wClientNoteNameChange(Window window, Atom atom)
+{
+	int change, i;
+
+	if (atom == XA_WM_NAME)
+		change = WM_NAME_CHANGED;
+	else if (wNETWMIsNameHint(atom))
+		change = NET_WM_NAME_CHANGED;
+	else if (atom == XA_WM_ICON_NAME || wNETWMIsIconNameHint(atom))
+		change = ICON_NAME_CHANGED;
+	else
+		return False;
+
+	for (i = 0; i < name_change_count; i++) {
+		if (name_changes[i].window == window) {
+			name_changes[i].changes |= change;
+			return True;
+		}
+	}
+
+	if (name_change_count == name_change_room) {
+		name_change_room += 8;
+		name_changes = wrealloc(name_changes, sizeof(name_changes[0]) * name_change_room);
+	}
+	name_changes[name_change_count].window = window;
+	name_changes[name_change_count].changes = change;
+	name_change_count++;
+
+	if (!name_change_handler)
+		name_change_handler = WMAddIdleHandler(applyNameChanges, NULL);
+
+	return True;
+}
+
+/*
  *----------------------------------------------------------------------
  * wClientCheckProperty--
  * 	Handles PropertyNotify'es, verifying which property was
@@ -324,28 +439,12 @@ void wClientCheckProperty(WWindow * wwin, XPropertyEvent * event)
 	XWindowAttributes attribs;
 	XWMHints *new_hints;
 	int i, g1, g2;
-	char *tmp = NULL;
 
 	switch (event->atom) {
 	case XA_WM_NAME:
-		if (!wwin->flags.net_has_title) {
-			/* window title was changed */
-			if (!wFetchName(dpy, wwin->client_win, &tmp)) {
-				wWindowUpdateName(wwin, NULL);
-			} else {
-				wWindowUpdateName(wwin, tmp);
-			}
-			if (tmp)
-				XFree(tmp);
-		}
-		break;
-
 	case XA_WM_ICON_NAME:
-		/* Title has changed, update the icon title */
-		if (wwin->icon) {
-			wIconChangeTitle(wwin->icon, wwin);
-			wIconPaint(wwin->icon);
-		}
+		/* names are read later, see wClientNoteNameChange() */
+		wClientNoteNameChange(event->window, event->atom);
 		break;
 
 	case XA_WM_COMMAND:

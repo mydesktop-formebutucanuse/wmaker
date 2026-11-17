@@ -1096,6 +1096,13 @@ static void handlePropertyNotify(XEvent * event)
 	if (!wClientIsWatchedProperty(event->xproperty.atom))
 		return;
 
+	/*
+	 * Names are read once the events received are handled, by then the
+	 * window may be gone, which is checked then
+	 */
+	if (wClientNoteNameChange(event->xproperty.window, event->xproperty.atom))
+		return;
+
 	wwin = wWindowFor(event->xproperty.window);
 	if (wwin) {
 		if (!XGetGeometry(dpy, wwin->client_win, &jr, &ji, &ji, &ju, &ju, &ju, &ju)) {
