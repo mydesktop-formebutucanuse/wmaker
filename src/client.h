@@ -27,6 +27,7 @@ void wClientConfigure(WWindow *wwin, XConfigureRequestEvent *xcre);
 void wClientGetGravityOffsets(WWindow *wwin, int *ofs_x, int *ofs_y);
 void wClientSendProtocol(WWindow *wwin, Atom protocol, Time time);
 void wClientKill(WWindow *wwin);
+Bool wClientIsWatchedProperty(Atom atom);
 void wClientCheckProperty(WWindow *wwin, XPropertyEvent *event);
 
 

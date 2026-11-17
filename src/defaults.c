@@ -468,6 +468,8 @@ WDefaultEntry optionList[] = {
 	    &wPreferences.ignore_focus_click, getBool, NULL, NULL, NULL},
 	{"UseSaveUnders", "NO", NULL,
 	    &wPreferences.use_saveunders, getBool, NULL, NULL, NULL},
+	{"UseBackingStore", "YES", NULL,
+	    &wPreferences.use_backing_store, getBool, NULL, NULL, NULL},
 	{"OpaqueMove", "YES", NULL,
 	    &wPreferences.opaque_move, getBool, NULL, NULL, NULL},
 	{"OpaqueResize", "NO", NULL,

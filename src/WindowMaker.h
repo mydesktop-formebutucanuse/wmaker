@@ -342,6 +342,7 @@ extern struct WPreferences {
 	char vi_key_menus;                 /* use h/j/k/l to select */
 	char align_menus;                  /* align menu with their parents */
 	char use_saveunders;               /* turn on SaveUnders for menus, icons etc. */
+	char use_backing_store;            /* the X server keeps the contents of windows */
 	char no_window_over_dock;
 	char no_window_over_icons;
 	WCoord window_place_origin;        /* Offset for windows placed on screen */

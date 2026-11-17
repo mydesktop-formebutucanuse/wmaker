@@ -71,6 +71,7 @@
 	WindowPlacement = auto;
 	IgnoreFocusClick = NO;
 	UseSaveUnders = NO;
+	UseBackingStore = YES;
 	OpaqueMove = YES;
 	OpaqueResize = NO;
 	OpaqueMoveResizeKeyboard = NO;

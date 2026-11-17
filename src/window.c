@@ -793,6 +793,8 @@ WWindow *wManageWindow(WScreen *scr, Window window)
 	wwin->client_win = window;
 	wwin->screen_ptr = scr;
 	wwin->old_border_width = wattribs.border_width;
+	/* from here on ColormapNotify keeps it current (the server is still grabbed) */
+	wwin->colormap = wattribs.colormap;
 	wwin->event_mask = CLIENT_EVENTS;
 	attribs.event_mask = CLIENT_EVENTS;
 	attribs.do_not_propagate_mask = ButtonPressMask | ButtonReleaseMask;
@@ -1287,6 +1289,8 @@ WWindow *wManageWindow(WScreen *scr, Window window)
 
 	wNETWMCheckInitialFrameState(wwin);
 
+	wWindowUpdateBackingStore(wwin);
+
 	/* setup button images */
 	wWindowUpdateButtonImages(wwin);
 
@@ -1537,6 +1541,12 @@ WWindow *wManageInternalWindow(WScreen *scr, Window window, Window owner,
 	wwin->focus_mode = WFM_PASSIVE;
 	wwin->client_win = window;
 	wwin->screen_ptr = scr;
+	{
+		XWindowAttributes attribs;
+
+		if (XGetWindowAttributes(dpy, window, &attribs))
+			wwin->colormap = attribs.colormap;
+	}
 	wwin->transient_for = owner;
 	wwin->client.x = x;
 	wwin->client.y = y;
@@ -2412,6 +2422,29 @@ void wWindowSnapToHead(WWindow *wwin)
 	/* Parameter not used, but tell the compiler that it is ok */
 	(void) wwin;
 #endif
+}
+
+/*
+ * Has the X server keep a copy of the window (its frame and the client in it)
+ * while it is mapped.
+ *
+ * The server does no save-unders: when a window moves, what it uncovers is
+ * drawn again by the applications under it, which shows as a trail of the
+ * window while they are slow to do it, or busy. With backing store the server
+ * puts it back itself from its copy, at once, and without them. A part of the
+ * window that was off the screen or under another one is in the copy as well,
+ * so the application has nothing to draw when it is moved into view either.
+ *
+ * Not for a fullscreen window: it is not under other windows, its copy would
+ * be the size of the screen, and an application drawing it with OpenGL would
+ * have every frame copied once more instead of shown.
+ */
+void wWindowUpdateBackingStore(WWindow *wwin)
+{
+	XSetWindowAttributes attribs;
+
+	attribs.backing_store = (wPreferences.use_backing_store && !wwin->flags.fullscreen) ? WhenMapped : NotUseful;
+	XChangeWindowAttributes(dpy, wwin->frame->core->window, CWBackingStore, &attribs);
 }
 
 void wWindowUpdateButtonImages(WWindow *wwin)

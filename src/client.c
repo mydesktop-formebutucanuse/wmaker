@@ -165,18 +165,12 @@ void wClientConfigure(WWindow * wwin, XConfigureRequestEvent * xcre)
 		XConfigureWindow(dpy, xcre->window, xcre->value_mask, &xwc);
 		return;
 	}
-#ifdef USE_XSHAPE
-	if (w_global.xext.shape.supported) {
-		int junk;
-		unsigned int ujunk;
-		int b_shaped;
-
-		XShapeSelectInput(dpy, wwin->client_win, ShapeNotifyMask);
-		XShapeQueryExtents(dpy, wwin->client_win, &b_shaped, &junk, &junk,
-				   &ujunk, &ujunk, &junk, &junk, &junk, &ujunk, &ujunk);
-		wwin->flags.shaped = b_shaped;
-	}
-#endif
+	/*
+	 * The shape of the window is not asked to the X server here: that is a
+	 * round trip, for each step of a window that the application moves by
+	 * itself. wManageWindow() asked it once and selected ShapeNotify, and
+	 * handleShapeNotify() keeps wwin->flags.shaped up to date since.
+	 */
 	if (xcre->value_mask & CWStackMode) {
 		WObjDescriptor *desc;
 		WWindow *sibling;
@@ -286,6 +280,30 @@ void wClientKill(WWindow * wwin)
 	XKillClient(dpy, wwin->client_win);
 
 	XFlush(dpy);
+}
+
+/*
+ * Whether wClientCheckProperty() does anything for a property; keep the two
+ * in step. Clients change many properties Window Maker never reads, and
+ * Window Maker gets PropertyNotify for the ones it sets on clients itself.
+ */
+Bool wClientIsWatchedProperty(Atom atom)
+{
+	switch (atom) {
+	case XA_WM_NAME:
+	case XA_WM_ICON_NAME:
+	case XA_WM_COMMAND:
+	case XA_WM_HINTS:
+	case XA_WM_NORMAL_HINTS:
+	case XA_WM_TRANSIENT_FOR:
+		return True;
+	default:
+		return atom == w_global.atom.wm.protocols
+		    || atom == w_global.atom.wm.colormap_windows
+		    || atom == w_global.atom.wmaker.menu
+		    || atom == w_global.atom.gnustep.wm_attr
+		    || wNETWMIsClientHint(atom);
+	}
 }
 
 /*

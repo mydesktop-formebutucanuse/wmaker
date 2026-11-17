@@ -990,6 +990,69 @@ static void handleUnmapNotify(XEvent * event)
 	XUngrabServer(dpy);
 }
 
+/*
+ * An application moving its window by itself, like Audacious its skinned
+ * windows while they are dragged, can ask for new positions faster than we
+ * get to them. Each one handled moves the window on the screen: the X server
+ * copies it there and has the windows it uncovers drawn again, for a position
+ * that is already outdated. When a later request for the window is waiting,
+ * and it sets everything this one does, that one is handled instead.
+ */
+typedef struct {
+	Window client;
+	Window frame;
+	unsigned long value_mask;
+	Bool blocked;
+} ConfigureScan;
+
+static Bool isNewerConfigure(Display *display, XEvent *ev, XPointer arg)
+{
+	ConfigureScan *scan = (ConfigureScan *) arg;
+
+	/* Parameter not used, but tell the compiler that it is ok */
+	(void) display;
+
+	if (scan->blocked)
+		return False;
+
+	if (ev->type == ConfigureRequest && ev->xconfigurerequest.window == scan->client) {
+		if ((ev->xconfigurerequest.value_mask & scan->value_mask) == scan->value_mask
+		    && !(ev->xconfigurerequest.value_mask & (CWSibling | CWStackMode)))
+			return True;
+
+		/* it does not replace the one at hand: they keep their order */
+		scan->blocked = True;
+		return False;
+	}
+
+	/* Anything else about the window (new size hints, its unmapping...)
+	 * stays after the request it came after */
+	if (ev->xany.window == scan->client || ev->xany.window == scan->frame)
+		scan->blocked = True;
+
+	return False;
+}
+
+static void skipOutdatedConfigure(WWindow *wwin, XConfigureRequestEvent *xcre)
+{
+	ConfigureScan scan;
+	XEvent ev;
+
+	/* a change of stacking order is not undone by a later one */
+	if (xcre->value_mask & (CWSibling | CWStackMode))
+		return;
+
+	scan.client = wwin->client_win;
+	scan.frame = wwin->frame->core->window;
+	scan.value_mask = xcre->value_mask;
+	scan.blocked = False;
+
+	while (XCheckIfEvent(dpy, &ev, isNewerConfigure, (XPointer) &scan)) {
+		*xcre = ev.xconfigurerequest;
+		scan.value_mask = xcre->value_mask;
+	}
+}
+
 static void handleConfigureRequest(XEvent * event)
 {
 	WWindow *wwin;
@@ -1001,6 +1064,7 @@ static void handleConfigureRequest(XEvent * event)
 		 */
 		wClientConfigure(NULL, &(event->xconfigurerequest));
 	} else {
+		skipOutdatedConfigure(wwin, &event->xconfigurerequest);
 		wClientConfigure(wwin, &(event->xconfigurerequest));
 	}
 }
@@ -1012,6 +1076,14 @@ static void handlePropertyNotify(XEvent * event)
 	Window jr;
 	int ji;
 	unsigned int ju;
+
+	/*
+	 * Most changes are of properties nothing here reads, often ones Window
+	 * Maker set itself, so don't spend a round trip checking the window for
+	 * those.
+	 */
+	if (!wClientIsWatchedProperty(event->xproperty.atom))
+		return;
 
 	wwin = wWindowFor(event->xproperty.window);
 	if (wwin) {
@@ -1350,13 +1422,19 @@ static void handleColormapNotify(XEvent * event)
 
 	do {
 		if (wwin) {
+			/* the client's colormap was freed, so it has none now */
+			if (!event->xcolormap.new && event->xcolormap.colormap == None
+			    && event->xcolormap.window == wwin->client_win)
+				wwin->colormap = None;
+
 			if (event->xcolormap.new) {
 				XWindowAttributes attr;
 
-				XGetWindowAttributes(dpy, wwin->client_win, &attr);
+				if (XGetWindowAttributes(dpy, wwin->client_win, &attr))
+					wwin->colormap = attr.colormap;
 
 				if (wwin == scr->cmap_window && wwin->cmap_window_no == 0)
-					scr->current_colormap = attr.colormap;
+					scr->current_colormap = wwin->colormap;
 
 				reinstall = True;
 			} else if (event->xcolormap.state == ColormapUninstalled &&

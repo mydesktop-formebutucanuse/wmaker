@@ -326,7 +326,8 @@ int wGetHeadForPointerLocation(WScreen * scr)
 	int ble;
 	unsigned int blo;
 
-	if (!scr->xine_info.count)
+	/* with a single head there is nothing to ask the server (moves call this per step) */
+	if (scr->xine_info.count <= 1)
 		return scr->xine_info.primary_head;
 
 	if (!XQueryPointer(dpy, scr->root_win, &bla, &bla, &point.x, &point.y, &ble, &ble, &blo))

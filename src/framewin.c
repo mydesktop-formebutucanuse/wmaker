@@ -57,6 +57,8 @@ static void paintButton(WCoreWindow * button, WTexture * texture,
 
 static void updateTitlebar(WFrameWindow * fwin);
 
+static void ensureTitleTexture(WFrameWindow *fwin, int state);
+
 static void allocFrameBorderPixel(WFrameWindow *fwin, const char *color_name, unsigned long **pixel);
 
 static void allocFrameBorderPixel(WFrameWindow *fwin, const char *color_name, unsigned long **pixel) {
@@ -793,6 +795,7 @@ static void updateTexture(WFrameWindow * fwin)
 	unsigned long pixel;
 
 	i = fwin->flags.state;
+	ensureTitleTexture(fwin, i);
 	if (fwin->titlebar) {
 		if (fwin->title_texture[i]->any.type != WTEX_SOLID) {
 			XSetWindowBackgroundPixmap(dpy, fwin->titlebar->window, fwin->title_back[i]);
@@ -901,8 +904,21 @@ static void remakeTexture(WFrameWindow * fwin, int state)
 			}
 		}
 	}
-	if (fwin->resizebar_texture && fwin->resizebar_texture[0]
-	    && fwin->resizebar && state == 0) {
+	fwin->flags.stale_title_textures &= ~(1 << state);
+}
+
+/* render the title texture for a state if it is not current, see wFrameWindowPaint() */
+static void ensureTitleTexture(WFrameWindow *fwin, int state)
+{
+	if (fwin->flags.stale_title_textures & (1 << state))
+		remakeTexture(fwin, state);
+}
+
+static void remakeResizebarTexture(WFrameWindow *fwin)
+{
+	Pixmap pmap;
+
+	if (fwin->resizebar_texture && fwin->resizebar_texture[0] && fwin->resizebar) {
 
 		FREE_PIXMAP(fwin->resizebar_back[0]);
 
@@ -938,25 +954,18 @@ void wFrameWindowPaint(WFrameWindow * fwin)
 		fwin->flags.justification = wPreferences.title_justification;
 
 	if (fwin->flags.need_texture_remake) {
-		int i;
-
 		fwin->flags.need_texture_remake = 0;
 		fwin->flags.need_texture_change = 0;
 
-		if (fwin->flags.single_texture) {
-			remakeTexture(fwin, 0);
-			updateTexture(fwin);
-		} else {
-			/* first render the texture for the current state... */
-			remakeTexture(fwin, state);
-			/* ... and paint it */
-			updateTexture(fwin);
-
-			for (i = 0; i < 3; i++) {
-				if (i != state)
-					remakeTexture(fwin, i);
-			}
-		}
+		/*
+		 * Render the title texture of the state the frame is in now, and
+		 * the others only when it changes to them (updateTexture()). Each
+		 * step of a resize used to render all three and send them to the
+		 * X server.
+		 */
+		fwin->flags.stale_title_textures = fwin->flags.single_texture ? 1 : 7;
+		remakeResizebarTexture(fwin);
+		updateTexture(fwin);
 #ifdef XKB_BUTTON_HINT
 		if (wPreferences.modelock)
 			wFrameWindowUpdateLanguageButton(fwin);
@@ -1329,6 +1338,7 @@ void wFrameWindowUpdateLanguageButton(WFrameWindow * fwin)
 	/* Fill the color pixmap depending on the style  */
 	if (wPreferences.new_style == TS_NEW) {
 		for (i = 0; i < 2; i++) {
+			ensureTitleTexture(fwin, i);
 			if (fwin->title_texture[i]->any.type != WTEX_SOLID && fwin->title_back[i] != None) {
 				XCopyArea(dpy, fwin->languagebutton_back[i], tmp[i], scr->copy_gc,
 						  0, 0, button->width, button->height, -WMScaled(1), -WMScaled(1));
