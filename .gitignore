@@ -58,6 +58,7 @@ util/wmaker.inst
 util/wmgenmenu
 util/wmiv
 util/wmmenugen
+util/wmnotch
 util/wmsetbg
 util/wmsetup
 util/wxcopy
@@ -85,6 +86,7 @@ WPrefs.app/WPrefs
 wrlib/wrlib.pc
 WINGs/WINGs.pc
 WINGs/WUtil.pc
+wmlib/wmlib.pc
 
 wrlib/libwraster.map
 
@@ -101,6 +103,9 @@ WindowMaker/Defaults/WindowMaker
 WindowMaker/IconSets/Default.iconset
 
 WPrefs.app/WPrefs.desktop
+
+doc/wmaker.1
+doc/wmsetbg.1
 
 # Some text editors generate backup files
 *~
