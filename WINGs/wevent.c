@@ -349,7 +349,14 @@ int WMIsDoubleClick(XEvent * event)
  */
 static Bool waitForEvent(Display * dpy, unsigned long xeventmask, Bool waitForInput)
 {
-	XSync(dpy, False);
+	/*
+	 * Only send the requests that are still buffered. XPending() and
+	 * XCheckMaskEvent() below take in whatever the server already sent, and
+	 * the wait in W_HandleInputEvents() wakes up when more arrives. An XSync()
+	 * here cost a round trip every time the program was about to go idle,
+	 * which for a window manager is after every batch of events.
+	 */
+	XFlush(dpy);
 	if (xeventmask == 0) {
 		if (XPending(dpy))
 			return True;
