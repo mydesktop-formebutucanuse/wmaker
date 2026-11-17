@@ -156,6 +156,7 @@ static WDECallbackUpdate updateNotch;
 static WDECallbackUpdate setModifierKeyLabels;
 static WDECallbackUpdate setModifierShortKeyLabels;
 static WDECallbackUpdate setHotCornerActions;
+static WDECallbackUpdate updateRootEvents;
 
 static WDECallbackConvert getCursor;
 static WDECallbackUpdate setCursor;
@@ -552,7 +553,7 @@ WDefaultEntry optionList[] = {
 	    &wPreferences.hotplug_monitor, getBool, NULL, NULL, NULL},
 #endif
 	{"HotCorners", "NO", NULL,
-	    &wPreferences.hot_corners, getBool, NULL, NULL, NULL},
+	    &wPreferences.hot_corners, getBool, updateRootEvents, NULL, NULL},
 	{"HotCornerDelay", "250", (void *)&wPreferences.hot_corner_delay,
 	    &wPreferences.hot_corner_delay, getInt, NULL, NULL, NULL},
 	{"HotCornerEdge", "2", (void *)&wPreferences.hot_corner_edge,
@@ -3605,6 +3606,18 @@ static int setIconPosition(WScreen * scr, WDefaultEntry * entry, void *bar, void
 
 	wScreenUpdateUsableArea(scr);
 	wArrangeIcons(scr, True);
+
+	return 0;
+}
+
+static int updateRootEvents(WScreen *scr, WDefaultEntry *entry, void *bar, void *foo)
+{
+	/* Parameter not used, but tell the compiler that it is ok */
+	(void) entry;
+	(void) bar;
+	(void) foo;
+
+	wScreenUpdateRootEvents(scr);
 
 	return 0;
 }

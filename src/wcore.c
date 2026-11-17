@@ -50,9 +50,7 @@ WCoreWindow *wCoreCreateTopLevel(WScreen *screen, int x, int y, int width, int h
 	attribs.background_pixmap = None;
 	attribs.background_pixel = screen->black_pixel;
 	attribs.border_pixel = border_pixel;
-	attribs.event_mask = SubstructureRedirectMask | ButtonPressMask |
-			     ButtonReleaseMask | ButtonMotionMask |
-			     ExposureMask | EnterWindowMask | LeaveWindowMask;
+	attribs.event_mask = WCORE_TOPLEVEL_EVENT_MASK;
 
 	attribs.colormap = colormap;
 

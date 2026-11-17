@@ -162,6 +162,13 @@ WMenu *wMenuCreate(WScreen *screen, const char *title, int main_menu)
 	menu->frame->core->descriptor.parent_type = WCLASS_MENU;
 	menu->frame->core->descriptor.handle_mousedown = menuMouseDown;
 
+	/*
+	 * A menu scrolls when the pointer pushes it against the edge of the
+	 * screen (see handleMotionNotify()), so the moves of the pointer over
+	 * it are needed, which no window inside it selects.
+	 */
+	XSelectInput(dpy, menu->frame->core->window, WCORE_TOPLEVEL_EVENT_MASK | PointerMotionMask);
+
 	wFrameWindowHideButton(menu->frame, WFF_RIGHT_BUTTON);
 
 	if (title) {
@@ -1692,10 +1699,15 @@ void wMenuScroll(WMenu *menu)
 	int jump_back = 0;
 	int old_frame_x = omenu->frame_x;
 	int old_frame_y = omenu->frame_y;
+	int was_scrolling = scr->flags.menu_scrolling;
 	XEvent ev;
 
 	if (omenu->jump_back)
 		WMDeleteTimerWithClientData(omenu->jump_back);
+
+	/* the pointer is followed where it goes from here, to know when it leaves the edge */
+	scr->flags.menu_scrolling = 1;
+	wScreenUpdateRootEvents(scr);
 
 	if (( /*omenu->flags.buttoned && */ !wPreferences.wrap_menus)
 	    || omenu->flags.app_menu) {
@@ -1783,6 +1795,9 @@ void wMenuScroll(WMenu *menu)
 		WMDeleteTimerHandler(menu->timer);
 		menu->timer = NULL;
 	}
+
+	scr->flags.menu_scrolling = was_scrolling;
+	wScreenUpdateRootEvents(scr);
 
 	if (jump_back) {
 		_delay *delayer;

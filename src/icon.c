@@ -42,6 +42,7 @@
 #include "application.h"
 #include "defaults.h"
 #include "appicon.h"
+#include "dock.h"
 #include "wmspec.h"
 #include "misc.h"
 #include "startup.h"
@@ -66,6 +67,7 @@ static RImage *get_window_image_from_wm_hints(WWindow *wwin);
 static void icon_update_pixmap(WIcon *icon, RImage *image);
 static void unset_icon_image(WIcon *icon);
 static void set_icon_image(WIcon *icon, RImage *image, const char *path, Bool client);
+static void forget_selected_icon(WIcon *icon);
 
 /****** Notification Observers ******/
 
@@ -217,8 +219,8 @@ void wIconDestroy(WIcon *icon)
 
 	WMRemoveNotificationObserver(icon);
 
-	if (icon->handlerID)
-		WMDeleteTimerHandler(icon->handlerID);
+	if (icon->selected)
+		forget_selected_icon(icon);
 
 	if (icon->icon_win) {
 		int x = 0, y = 0;
@@ -629,18 +631,76 @@ void remove_cache_icon(char *filename)
 		unlink(filename);
 }
 
+/*
+ * The dashes of the frame of the selected icons move along it. A single
+ * timer does that for all of them, and it runs only while one of them is
+ * shown: it is not set again when it finds none to draw, and wIconPaint()
+ * starts it again, when an icon that is selected is shown anew.
+ */
+static WMArray *selected_icons = NULL;
+static WMHandlerID cycle_timer = NULL;
+static unsigned int cycle_step = 0;
+
+/* Tells if the icon may be on the screen */
+static Bool icon_is_shown(WIcon *icon)
+{
+	WObjDescriptor *desc = &icon->core->descriptor;
+
+	if (desc->parent_type != WCLASS_DOCK_ICON && desc->parent_type != WCLASS_APPICON)
+		return True;
+
+	return wAppIconIsShown(desc->parent);
+}
+
 static void cycleColor(void *data)
 {
-	WIcon *icon = (WIcon *) data;
-	WScreen *scr = icon->core->screen_ptr;
-	XGCValues gcv;
+	WMArrayIterator iter;
+	WIcon *icon;
+	Bool drawn = False;
 
-	icon->step--;
-	gcv.dash_offset = WMScaled(icon->step);
-	XChangeGC(dpy, scr->icon_select_gc, GCDashOffset, &gcv);
+	/* Parameter not used, but tell the compiler that it is ok */
+	(void) data;
 
-	drawSelectionFrame(icon);
-	icon->handlerID = WMAddTimerHandler(COLOR_CYCLE_DELAY, cycleColor, icon);
+	cycle_timer = NULL;
+	if (wPreferences.dont_blink)
+		return;
+
+	/* the offset goes backwards through the 8 steps of the dash pattern */
+	cycle_step = (cycle_step - 1) & 7;
+
+	WM_ITERATE_ARRAY(selected_icons, icon, iter) {
+		XGCValues gcv;
+
+		if (!icon_is_shown(icon))
+			continue;
+
+		/* Xlib sends the change once for the icons of a screen, the value is the same */
+		gcv.dash_offset = WMScaled(cycle_step);
+		XChangeGC(dpy, icon->core->screen_ptr->icon_select_gc, GCDashOffset, &gcv);
+		drawSelectionFrame(icon);
+		drawn = True;
+	}
+
+	if (drawn)
+		cycle_timer = WMAddTimerHandler(COLOR_CYCLE_DELAY, cycleColor, NULL);
+}
+
+static void start_cycling(WIcon *icon)
+{
+	if (cycle_timer == NULL && !wPreferences.dont_blink && icon_is_shown(icon))
+		cycle_timer = WMAddTimerHandler(COLOR_CYCLE_DELAY, cycleColor, NULL);
+}
+
+static void forget_selected_icon(WIcon *icon)
+{
+	if (selected_icons == NULL)
+		return;
+
+	WMRemoveFromArray(selected_icons, icon);
+	if (WMGetArrayItemCount(selected_icons) == 0 && cycle_timer != NULL) {
+		WMDeleteTimerHandler(cycle_timer);
+		cycle_timer = NULL;
+	}
 }
 
 void wIconSetHighlited(WIcon *icon, Bool flag)
@@ -657,16 +717,14 @@ void wIconSelect(WIcon *icon)
 	icon->selected = !icon->selected;
 
 	if (icon->selected) {
-		icon->step = 0;
-		if (!wPreferences.dont_blink)
-			icon->handlerID = WMAddTimerHandler(10, cycleColor, icon);
-		else
-			drawSelectionFrame(icon);
+		if (selected_icons == NULL)
+			selected_icons = WMCreateArray(4);
+		WMAddToArray(selected_icons, icon);
+
+		drawSelectionFrame(icon);
+		start_cycling(icon);
 	} else {
-		if (icon->handlerID) {
-			WMDeleteTimerHandler(icon->handlerID);
-			icon->handlerID = NULL;
-		}
+		forget_selected_icon(icon);
 		XClearArea(dpy, icon->core->window, 0, 0, icon->core->width, icon->core->height, True);
 	}
 }
@@ -1323,8 +1381,10 @@ void wIconPaint(WIcon *icon)
 
 	update_icon_title(icon);
 
-	if (icon->selected)
+	if (icon->selected) {
 		drawSelectionFrame(icon);
+		start_cycling(icon);
+	}
 }
 
 /******************************************************************/

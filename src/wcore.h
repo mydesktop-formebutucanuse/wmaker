@@ -40,6 +40,11 @@ typedef struct _WCoreWindow {
 	WStacking *stacking;		/* window stacking information */
 } WCoreWindow;
 
+/* The events that the windows made by wCoreCreateTopLevel() select */
+#define WCORE_TOPLEVEL_EVENT_MASK (SubstructureRedirectMask | ButtonPressMask | \
+				   ButtonReleaseMask | ButtonMotionMask | \
+				   ExposureMask | EnterWindowMask | LeaveWindowMask)
+
 WCoreWindow *wCoreCreateTopLevel(WScreen *screen, int x, int y, int width,
 				 int height, int bwidth,
 				 int depth, Visual *visual, Colormap colormap,

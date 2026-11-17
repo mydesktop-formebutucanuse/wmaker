@@ -307,6 +307,8 @@ typedef struct _WScreen {
     /* for hot-corners delay */
     WMHandlerID *hot_corner_timer;
 
+    long root_event_mask;	       /* events selected on the root window */
+
 #ifdef USE_RANDR
     WMHandlerID *randr_debounce_timer;
     void *randr_state;
@@ -358,6 +360,7 @@ typedef struct _WScreen {
         unsigned int jump_back_pending:1;
         unsigned int ignore_focus_events:1;
         unsigned int in_hot_corner:3;
+        unsigned int menu_scrolling:1;	       /* in wMenuScroll(), which follows the pointer */
         unsigned int mark_capture_mode:3;  /* one of WMarkCaptureMode */
 
     } flags;
@@ -380,6 +383,7 @@ WScreen *wScreenForWindow(Window window);   /* slower than above functions */
 
 void wScreenDestroy(WScreen *scr);
 void wScreenUpdateUsableArea(WScreen *scr);
+void wScreenUpdateRootEvents(WScreen *scr);
 
 void create_logo_image(WScreen *scr);
 #endif

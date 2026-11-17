@@ -38,6 +38,7 @@
 #include "actions.h"
 #include "xinerama.h"
 #include "stacking.h"
+#include "appicon.h"
 
 /* ICON_KABOOM_PIECE_SIZE is in logical pixels */
 #define PIECES ((64/ICON_KABOOM_PIECE_SIZE)*(64/ICON_KABOOM_PIECE_SIZE))
@@ -197,11 +198,9 @@ static void doAppBounce(void *arg)
 	AppBouncerData *data = (AppBouncerData*)arg;
 	WAppIcon *aicon = data->wapp->app_icon;
 
-	if (!aicon)
-		return;
-
 reinit:
-	if (data->wapp->refcount > 1) {
+	/* without its icon, which may be taken away meanwhile, the bounce is over */
+	if (aicon && data->wapp->refcount > 1) {
 		if (wPreferences.raise_appicons_when_bouncing)
 			XRaiseWindow(dpy, aicon->icon->core->window);
 
@@ -242,9 +241,11 @@ reinit:
 		}
 	}
 
-	XMoveWindow(dpy, aicon->icon->core->window,
-			aicon->x_pos, aicon->y_pos);
-	CommitStackingForWindow(aicon->icon->core);
+	if (aicon) {
+		XMoveWindow(dpy, aicon->icon->core->window,
+				aicon->x_pos, aicon->y_pos);
+		CommitStackingForWindow(aicon->icon->core);
+	}
 	data->wapp->flags.bouncing = 0;
 	WMDeleteTimerHandler(data->timer);
 	wApplicationDestroy(data->wapp);
@@ -321,10 +322,17 @@ static int bounceDirection(WAppIcon *aicon)
 	return dir;
 }
 
+/* Tells if the icon of the application bounces at all, with the options that are set */
+static Bool appCanBounce(WApplication *wapp)
+{
+	return !wPreferences.no_animations && wapp->app_icon
+		&& !wPreferences.do_not_make_appicons_bounce;
+}
+
 void wAppBounce(WApplication *wapp)
 {
-	if (!wPreferences.no_animations && wapp->app_icon && !wapp->flags.bouncing
-		&& !wPreferences.do_not_make_appicons_bounce) {
+	/* an icon that is not on the screen, in a hidden or collapsed dock, has nobody to bounce for */
+	if (appCanBounce(wapp) && !wapp->flags.bouncing && wAppIconIsShown(wapp->app_icon)) {
 		++wapp->refcount;
 		wapp->flags.bouncing = 1;
 
@@ -361,12 +369,22 @@ static int appIsUrgent(WApplication *wapp)
 	return 0;
 }
 
+/*
+ * The timer of the urgent applications is only there to make their icon
+ * bounce: there is none when the options say that it does not, and the
+ * icon then bounces from the next time the application becomes urgent on
+ */
+static Bool appBouncesWhileUrgent(WApplication *wapp)
+{
+	return wPreferences.bounce_appicons_when_urgent && appCanBounce(wapp);
+}
+
 static void doAppUrgentBounce(void *arg)
 {
 	WApplication *wapp = (WApplication *)arg;
 
-	if (appIsUrgent(wapp)) {
-		if(wPreferences.bounce_appicons_when_urgent) wAppBounce(wapp);
+	if (appIsUrgent(wapp) && appBouncesWhileUrgent(wapp)) {
+		wAppBounce(wapp);
 	} else {
 		WMDeleteTimerHandler(wapp->urgent_bounce_timer);
 		wapp->urgent_bounce_timer = NULL;
@@ -376,7 +394,7 @@ static void doAppUrgentBounce(void *arg)
 void wAppBounceWhileUrgent(WApplication *wapp)
 {
 	if (!wapp) return;
-	if (appIsUrgent(wapp)) {
+	if (appIsUrgent(wapp) && appBouncesWhileUrgent(wapp)) {
 		if (!wapp->urgent_bounce_timer) {
 			wapp->urgent_bounce_timer = WMAddPersistentTimerHandler(URGENT_BOUNCE_DELAY, doAppUrgentBounce, wapp);
 			doAppUrgentBounce(wapp);
