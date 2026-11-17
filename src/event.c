@@ -1422,13 +1422,19 @@ static void handleColormapNotify(XEvent * event)
 
 	do {
 		if (wwin) {
+			/* the client's colormap was freed, so it has none now */
+			if (!event->xcolormap.new && event->xcolormap.colormap == None
+			    && event->xcolormap.window == wwin->client_win)
+				wwin->colormap = None;
+
 			if (event->xcolormap.new) {
 				XWindowAttributes attr;
 
-				XGetWindowAttributes(dpy, wwin->client_win, &attr);
+				if (XGetWindowAttributes(dpy, wwin->client_win, &attr))
+					wwin->colormap = attr.colormap;
 
 				if (wwin == scr->cmap_window && wwin->cmap_window_no == 0)
-					scr->current_colormap = attr.colormap;
+					scr->current_colormap = wwin->colormap;
 
 				reinstall = True;
 			} else if (event->xcolormap.state == ColormapUninstalled &&

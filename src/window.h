@@ -235,6 +235,7 @@ typedef struct WWindow {
 
 	int cmap_window_no;
 	Window *cmap_windows;
+	Colormap colormap;			/* of client_win, see wColormapInstallForWindow() */
 
 	/* move/resize state for _NET_WM_MOVERESIZE support */
 	struct {

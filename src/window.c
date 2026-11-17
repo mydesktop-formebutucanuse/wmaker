@@ -793,6 +793,8 @@ WWindow *wManageWindow(WScreen *scr, Window window)
 	wwin->client_win = window;
 	wwin->screen_ptr = scr;
 	wwin->old_border_width = wattribs.border_width;
+	/* from here on ColormapNotify keeps it current (the server is still grabbed) */
+	wwin->colormap = wattribs.colormap;
 	wwin->event_mask = CLIENT_EVENTS;
 	attribs.event_mask = CLIENT_EVENTS;
 	attribs.do_not_propagate_mask = ButtonPressMask | ButtonReleaseMask;
@@ -1539,6 +1541,12 @@ WWindow *wManageInternalWindow(WScreen *scr, Window window, Window owner,
 	wwin->focus_mode = WFM_PASSIVE;
 	wwin->client_win = window;
 	wwin->screen_ptr = scr;
+	{
+		XWindowAttributes attribs;
+
+		if (XGetWindowAttributes(dpy, window, &attribs))
+			wwin->colormap = attribs.colormap;
+	}
 	wwin->transient_for = owner;
 	wwin->client.x = x;
 	wwin->client.y = y;
