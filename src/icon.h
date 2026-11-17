@@ -82,6 +82,8 @@ char *get_name_for_instance_class(const char *wm_instance, const char *wm_class)
 
 void wIconSetHighlited(WIcon *icon, Bool flag);
 void wIconMakeMiniPreview(WIcon *icon, Window window, Visual *visual, int width, int height);
+Pixmap wMakeScaledPixmap(WScreen *scr, Drawable drawable, Visual *visual, int width, int height,
+                         int dst_w, int dst_h);
 
 void remove_cache_icon(char *filename);
 #endif /* WMICON_H_ */

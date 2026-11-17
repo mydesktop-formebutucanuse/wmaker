@@ -29,6 +29,8 @@
 
 #include "screen.h"
 #include "window.h"
+#include "icon.h"
+#include "texture.h"
 #include "misc.h"
 #include "workspace.h"
 #include "wsmap.h"
@@ -64,31 +66,54 @@ typedef struct {
 	WMLabel *workspace_label;
 } W_WorkspaceMap;
 
+/*
+ * Keep the picture of the current workspace, the screen scaled down, for
+ * the workspace map.
+ *
+ * The X server scales it (see wMakeScaledPixmap()) and keeps it. Without
+ * the Render extension, the screen is read back and scaled by Window Maker:
+ * all of it (8 MB at 1920x1080), at every workspace switch while the pager
+ * is enabled.
+ */
 void wWorkspaceMapUpdate(WScreen *scr)
 {
-	XImage *pimg;
+	WWorkspace *ws = scr->workspaces[scr->current_workspace];
+	int width = scr->scr_width / WORKSPACE_MAP_RATIO;
+	int height = scr->scr_height / WORKSPACE_MAP_RATIO;
+	WMPixmap *map = NULL;
+	Pixmap pixmap;
 
-	pimg = XGetImage(dpy, scr->root_win, 0, 0,
-	                 scr->scr_width, scr->scr_height,
-	                 AllPlanes, ZPixmap);
-	if (pimg) {
-		RImage *mini_preview;
+	pixmap = wMakeScaledPixmap(scr, scr->root_win, DefaultVisual(dpy, scr->screen),
+	                           scr->scr_width, scr->scr_height, width, height);
+	if (pixmap != None) {
+		map = WMCreatePixmapFromXPixmaps(scr->wmscreen, pixmap, None, width, height, scr->w_depth);
+	} else {
+		XImage *pimg;
 
-		mini_preview = RCreateImageFromXImage(scr->rcontext, pimg, NULL);
-		XDestroyImage(pimg);
+		pimg = XGetImage(dpy, scr->root_win, 0, 0,
+		                 scr->scr_width, scr->scr_height,
+		                 AllPlanes, ZPixmap);
+		if (pimg) {
+			RImage *image, *scaled;
 
-		if (mini_preview) {
-			RImage *tmp = scr->workspaces[scr->current_workspace]->map;
+			image = RCreateImageFromXImage(scr->rcontext, pimg, NULL);
+			XDestroyImage(pimg);
 
-			if (tmp)
-				RReleaseImage(tmp);
-
-			scr->workspaces[scr->current_workspace]->map =
-				RSmoothScaleImage(mini_preview,
-				                  scr->scr_width / WORKSPACE_MAP_RATIO,
-				                  scr->scr_height / WORKSPACE_MAP_RATIO);
-			RReleaseImage(mini_preview);
+			if (image) {
+				scaled = RSmoothScaleImage(image, width, height);
+				RReleaseImage(image);
+				if (scaled) {
+					map = WMCreatePixmapFromRImage(scr->wmscreen, scaled, 128);
+					RReleaseImage(scaled);
+				}
+			}
 		}
+	}
+
+	if (map) {
+		if (ws->map)
+			WMReleasePixmap(ws->map);
+		ws->map = map;
 	}
 }
 
@@ -235,11 +260,43 @@ static void workspace_map_realize(WWorkspaceMap *wsmap, WMFrame *frame_border, W
 	}
 }
 
-static WMPixmap *enlight_workspace(WScreen *scr, RImage *mini_wkspace_map)
+/*
+ * The current workspace shows lighter: its colors times 1.25, as
+ * RLightImage() with an alpha of 160 makes them. Where the colors are not
+ * dithered (see wPaintFormat()), the X server adds a quarter of the colors
+ * to them.
+ */
+static WMPixmap *enlight_workspace(WScreen *scr, WMPixmap *map)
 {
-	RImage *tmp = RCloneImage(mini_wkspace_map);
+	XRenderPictFormat *format = wPaintFormat(scr);
+	WMSize size = WMGetPixmapSize(map);
+	RImage *tmp;
 	RColor color;
 	WMPixmap *icon;
+
+	if (format) {
+		XRenderColor quarter = { 0, 0, 0, 0x4000 };
+		Picture src, dst, mask;
+		Pixmap pixmap;
+
+		pixmap = XCreatePixmap(dpy, scr->root_win, size.width, size.height, scr->w_depth);
+		src = XRenderCreatePicture(dpy, WMGetPixmapXID(map), format, 0, NULL);
+		dst = XRenderCreatePicture(dpy, pixmap, format, 0, NULL);
+		mask = XRenderCreateSolidFill(dpy, &quarter);
+
+		XRenderComposite(dpy, PictOpSrc, src, None, dst, 0, 0, 0, 0, 0, 0, size.width, size.height);
+		XRenderComposite(dpy, PictOpAdd, src, mask, dst, 0, 0, 0, 0, 0, 0, size.width, size.height);
+
+		XRenderFreePicture(dpy, mask);
+		XRenderFreePicture(dpy, dst);
+		XRenderFreePicture(dpy, src);
+
+		return WMCreatePixmapFromXPixmaps(scr->wmscreen, pixmap, None, size.width, size.height, scr->w_depth);
+	}
+
+	tmp = RCreateImageFromDrawable(scr->rcontext, WMGetPixmapXID(map), None);
+	if (!tmp)
+		return WMRetainPixmap(map);
 
 	color.red = color.green = color.blue = 0;
 	color.alpha = 160;
@@ -252,26 +309,35 @@ static WMPixmap *enlight_workspace(WScreen *scr, RImage *mini_wkspace_map)
 
 static WMPixmap *dummy_background_pixmap(WWorkspaceMap *wsmap)
 {
-	RImage *img;
+	WScreen *scr = wsmap->scr;
 	WMPixmap *icon;
 
-	img = RCreateImage(wsmap->mini_workspace_width, wsmap->mini_workspace_height, 0);
-
-	if (!img)
+	icon = WMCreatePixmap(scr->wmscreen, wsmap->mini_workspace_width, wsmap->mini_workspace_height,
+	                      scr->w_depth, False);
+	if (!icon)
 		return NULL;
 
 	/* the workspace texture is not saved anywhere, so just using the default unfocus color */
-	if (wsmap->scr->window_title_texture[WS_UNFOCUSED]) {
+	if (scr->window_title_texture[WS_UNFOCUSED]) {
 		RColor frame_bg_color;
+		XColor xcolor;
 
-		frame_bg_color.red = wsmap->scr->window_title_texture[WS_UNFOCUSED]->solid.normal.red;
-		frame_bg_color.green = wsmap->scr->window_title_texture[WS_UNFOCUSED]->solid.normal.green;
-		frame_bg_color.blue = wsmap->scr->window_title_texture[WS_UNFOCUSED]->solid.normal.blue;
-		RFillImage(img, &frame_bg_color);
+		frame_bg_color.red = scr->window_title_texture[WS_UNFOCUSED]->solid.normal.red;
+		frame_bg_color.green = scr->window_title_texture[WS_UNFOCUSED]->solid.normal.green;
+		frame_bg_color.blue = scr->window_title_texture[WS_UNFOCUSED]->solid.normal.blue;
+		frame_bg_color.alpha = 255;
+
+		if (RGetClosestXColor(scr->rcontext, &frame_bg_color, &xcolor)) {
+			XGCValues gcv;
+			GC gc;
+
+			gcv.foreground = xcolor.pixel;
+			gc = XCreateGC(dpy, WMGetPixmapXID(icon), GCForeground, &gcv);
+			XFillRectangle(dpy, WMGetPixmapXID(icon), gc, 0, 0,
+			               wsmap->mini_workspace_width, wsmap->mini_workspace_height);
+			XFreeGC(dpy, gc);
+		}
 	}
-
-	icon = WMCreatePixmapFromRImage(wsmap->scr->wmscreen, img, 128);
-	RReleaseImage(img);
 
 	return icon;
 }
@@ -331,7 +397,7 @@ static  WMPixmap *get_mini_workspace(WWorkspaceMap *wsmap, int index)
 	if (index == wsmap->scr->current_workspace)
 		return enlight_workspace(wsmap->scr, wsmap->scr->workspaces[index]->map);
 
-	return WMCreatePixmapFromRImage(wsmap->scr->wmscreen, wsmap->scr->workspaces[index]->map, 128);
+	return WMRetainPixmap(wsmap->scr->workspaces[index]->map);
 }
 
 static void create_mini_workspace(WScreen *scr, WWorkspaceMap *wsmap, W_WorkspaceMap *wsmap_array)
@@ -403,7 +469,6 @@ static WWorkspaceMap *create_workspace_map(WScreen *scr, W_WorkspaceMap *wsmap_a
 	WMFrame *framel = WMCreateFrame(wsmap->win);
 	WMResizeWidget(framel, wsmap->wswidth, wsmap->border_width);
 	WMSetFrameRelief(framel, WRSimple);
-	wWorkspaceMapUpdate(scr);
 
 	wsmap->xcount = 0;
 	if (edge == WD_TOP) {
@@ -552,6 +617,8 @@ static void handle_event(WWorkspaceMap *wsmap, W_WorkspaceMap *wsmap_array)
 				}
 				WMReleasePixmap(icon);
 			}
+			WMReleaseFont(bold);
+			WMReleaseColor(black);
 			WMHandleEvent(&ev);
 			break;
 

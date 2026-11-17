@@ -167,7 +167,7 @@ Bool wWorkspaceDelete(WScreen * scr, int workspace)
 			if (scr->workspaces[i]->name)
 				wfree(scr->workspaces[i]->name);
 			if (scr->workspaces[i]->map)
-				RReleaseImage(scr->workspaces[i]->map);
+				WMReleasePixmap(scr->workspaces[i]->map);
 			wfree(scr->workspaces[i]);
 		}
 	}
