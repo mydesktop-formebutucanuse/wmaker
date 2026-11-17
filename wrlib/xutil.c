@@ -42,6 +42,9 @@
 
 #ifdef USE_XSHM
 
+/* images smaller than this (in pixels) don't use shared memory, see RCreateXImage() */
+#define SHM_MIN_PIXELS (1000UL * 1000UL)
+
 static int shmError;
 
 static int (*oldErrorHandler)(Display *dpy, XErrorEvent *err);
@@ -82,10 +85,14 @@ RXImage *RCreateXImage(RContext * context, int depth, unsigned width, unsigned h
 		return NULL;
 	}
 #else				/* USE_XSHM */
-	if (!context->attribs->use_shared_memory) {
+	/*
+	 * A shared memory image costs three round trips and an attach and detach
+	 * of the segment in the server, every time. Below the size of a
+	 * background, sending the pixels the normal way is faster.
+	 */
+	if (!context->attribs->use_shared_memory || (unsigned long)width * height < SHM_MIN_PIXELS) {
  retry_without_shm:
-
-		context->attribs->use_shared_memory = 0;
+		/* every jump here has turned shared memory off for the context already */
 		rximg->is_shared = 0;
 		rximg->image = XCreateImage(context->dpy, visual, depth, ZPixmap, 0, NULL, width, height, 8, 0);
 		if (!rximg->image) {
