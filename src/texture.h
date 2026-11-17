@@ -21,6 +21,8 @@
 #ifndef WMTEXTURE_H_
 #define WMTEXTURE_H_
 
+#include <X11/extensions/Xrender.h>
+
 #include "screen.h"
 #include "wcore.h"
 
@@ -119,6 +121,7 @@ typedef struct WTexPixmap {
     GC normal_gc;
 
     struct RImage *pixmap;
+    Pixmap tile;		       /* the image on the X server, see wPaintTexture() */
 } WTexPixmap;
 
 typedef struct WTexTGradient {
@@ -185,5 +188,29 @@ void wDrawScaledImageLine(RImage *image, int x1, int y1, int x2, int y2, const R
 
 void wDrawBevel(Drawable d, unsigned width, unsigned height,
                 WTexSolid *texture, int relief);
+
+/*
+ * A texture being painted, with its relief and the lines drawn over it: by
+ * the X server, or as an image rendered by Window Maker (see wPaintTexture())
+ */
+typedef struct WPaint {
+    WScreen *scr;
+    int width, height;
+    struct RImage *image;	       /* the image rendered by Window Maker, or */
+    Pixmap pixmap;		       /* the pixmap painted by the X server */
+    Picture picture;
+    GC invert_gc;
+} WPaint;
+
+XRenderPictFormat *wPaintFormat(WScreen *scr);
+Bool wPaintTexture(WPaint *paint, WScreen *scr, WTexture *texture, int width, int height, int relief);
+Bool wPaintPart(WPaint *paint, const WPaint *src, int x, int y, int width, int height);
+void wPaintBevel(WPaint *paint, int bevel_type);
+void wPaintOperateLine(WPaint *paint, int operation, int x1, int y1, int x2, int y2, const RColor *color);
+void wPaintDrawLine(WPaint *paint, int x1, int y1, int x2, int y2, const RColor *color);
+Pixmap wPaintFinish(WPaint *paint);
+void wPaintRelease(WPaint *paint);
+
+Picture wPictureFromImage(WScreen *scr, struct RImage *image);
 
 #endif
