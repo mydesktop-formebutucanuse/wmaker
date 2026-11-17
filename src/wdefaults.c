@@ -475,6 +475,7 @@ RImage *get_default_image(WScreen *scr)
 	image = get_rimage_from_file(scr, path, wPreferences.icon_size);
 	if (!image)
 		wwarning(_("could not find default icon \"%s\""), path);
+	wfree(path);
 
 	/* Resize the icon to the wPreferences.icon_size size
 	 * usually this function will return early, because size is right */
