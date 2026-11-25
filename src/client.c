@@ -42,6 +42,7 @@
 #include "appmenu.h"
 #include "wmspec.h"
 #include "misc.h"
+#include "sound.h"
 
 
 /*
@@ -595,10 +596,13 @@ void wClientCheckProperty(WWindow * wwin, XPropertyEvent * event)
 				}
 			}
 
-			if (wwin->wm_hints->flags & UrgencyHint)
+			if (wwin->wm_hints->flags & UrgencyHint) {
+				if (!wwin->flags.urgent)
+					wSoundPlay("window-attention", "Window wants attention");
 				wwin->flags.urgent = 1;
-			else
+			} else {
 				wwin->flags.urgent = 0;
+			}
 			wAppBounceWhileUrgent(wApplicationOf(wwin->main_window));
 		/*} else if (wwin->fake_group!=NULL) {
 			wwin->group_id = wwin->fake_group->leader; */

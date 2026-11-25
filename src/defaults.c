@@ -65,6 +65,7 @@
 #include "misc.h"
 #include "winmenu.h"
 #include "rootmenu.h"
+#include "sound.h"
 
 typedef struct _WDefaultEntry  WDefaultEntry;
 typedef int (WDECallbackConvert) (WScreen *scr, WDefaultEntry *entry, WMPropList *plvalue, void *addr, void **tdata);
@@ -156,6 +157,7 @@ static WDECallbackUpdate updateNotch;
 static WDECallbackUpdate setModifierKeyLabels;
 static WDECallbackUpdate setModifierShortKeyLabels;
 static WDECallbackUpdate setHotCornerActions;
+static WDECallbackUpdate setSoundEvents;
 static WDECallbackUpdate updateRootEvents;
 
 static WDECallbackConvert getCursor;
@@ -568,6 +570,10 @@ WDefaultEntry optionList[] = {
 	    &wPreferences.keychain_timeout_delay, getInt, NULL, NULL, NULL},
 	{"ScreenshotFilenameTemplate", DEF_SCREENSHOT_FILENAME_TEMPLATE, NULL,
 	    &wPreferences.screenshot_filename_template, getString, NULL, NULL, NULL},
+	{"SoundTheme", "freedesktop", NULL,
+	    &wPreferences.sound_theme, getString, NULL, NULL, NULL},
+	{"SoundEvents", "(\"power-plug\")", &wPreferences,
+	    NULL, getPropList, setSoundEvents, NULL, NULL},
 
 	/* style options */
 
@@ -3921,6 +3927,47 @@ static int setHotCornerActions(WScreen * scr, WDefaultEntry * entry, void *tdata
 	return 0;
 }
 
+
+static int setSoundEvents(WScreen *scr, WDefaultEntry *entry, void *tdata, void *foo)
+{
+	WMPropList *array = tdata;
+	struct WPreferences *prefs = foo;
+	char **events;
+	int i, count, n;
+
+	/* Parameter not used, but tell the compiler that it is ok */
+	(void) scr;
+
+	if (!WMIsPLArray(array)) {
+		wwarning(_("Value for option \"%s\" must be an array of strings"), entry->key);
+		WMReleasePropList(array);
+		return 0;
+	}
+
+	count = WMGetPropListItemCount(array);
+	events = wmalloc(sizeof(char *) * (count + 1));
+	for (i = 0, n = 0; i < count; i++) {
+		WMPropList *item = WMGetFromPLArray(array, i);
+
+		if (WMIsPLString(item))
+			events[n++] = wstrdup(WMGetFromPLString(item));
+		else
+			wwarning(_("Invalid argument for option \"%s\" item %d"), entry->key, i);
+	}
+	events[n] = NULL;
+	WMReleasePropList(array);
+
+	if (prefs->sound_events) {
+		for (i = 0; prefs->sound_events[i]; i++)
+			wfree(prefs->sound_events[i]);
+		wfree(prefs->sound_events);
+	}
+	prefs->sound_events = events;
+
+	wSoundEventsChanged();
+
+	return 0;
+}
 
 static int setDoubleClick(WScreen *scr, WDefaultEntry *entry, void *tdata, void *foo)
 {

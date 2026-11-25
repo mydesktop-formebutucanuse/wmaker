@@ -459,6 +459,31 @@ AC_CHECK_HEADERS([sys/inotify.h],
     [AC_DEFINE([HAVE_INOTIFY], [1], [Check for inotify])])
 
 
+dnl Check for libcanberra
+dnl ======================
+dnl It is used to play the sounds of events from the XDG sound theme
+dnl (SoundTheme and SoundEvents in the defaults)
+m4_divert_push([INIT_PREPARE])dnl
+AC_ARG_ENABLE([sound],
+    [AS_HELP_STRING([--disable-sound], [disable event sounds through libcanberra @<:@default=auto@:>@])],
+    [AS_CASE([$enableval],
+        [yes|no], [],
+        [AC_MSG_ERROR([bad value $enableval for --enable-sound])] )],
+    [enable_sound=auto])
+m4_divert_pop([INIT_PREPARE])dnl
+
+AS_IF([test "x$enable_sound" != "xno"],
+    [PKG_CHECK_MODULES([CANBERRA], [libcanberra],
+        [AC_DEFINE([USE_CANBERRA], [1], [Define to play event sounds with libcanberra])
+         supported_core="$supported_core Sound"],
+        [AS_IF([test "x$enable_sound" = "xyes"],
+            [AC_MSG_ERROR([--enable-sound was given but libcanberra was not found])])
+         unsupported="$unsupported Sound"])],
+    [unsupported="$unsupported Sound"])
+AC_SUBST(CANBERRA_CFLAGS)
+AC_SUBST(CANBERRA_LIBS)
+
+
 dnl Check for syslog
 dnl ================
 dnl It is used by WUtil to log the wwarning, werror and wfatal

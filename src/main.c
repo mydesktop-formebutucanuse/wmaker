@@ -56,6 +56,7 @@
 #include "main.h"
 #include "monitor.h"
 #include "misc.h"
+#include "sound.h"
 
 #include <WINGs/WUtil.h>
 
@@ -792,6 +793,7 @@ static int real_main(int argc, char **argv)
 #ifdef HAVE_INOTIFY
 	inotifyWatchConfig();
 #endif
+	wSoundInitialize();
 	EventLoop();
 	return -1;
 }
