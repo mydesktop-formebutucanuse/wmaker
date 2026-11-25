@@ -1083,8 +1083,27 @@ updateWindowPosition(WWindow * wwin, MoveData * data, Bool doResistance,
 			rect = wGetRectForHead(scr, head);
 
 			l_edge = WMAX(scr->totalUsableArea[head].x1, rect.pos.x);
-			edge_l = l_edge - resist;
 			edge_r = WMIN(scr->totalUsableArea[head].x2, rect.pos.x + rect.size.width);
+			t_edge = WMAX(scr->totalUsableArea[head].y1, rect.pos.y);
+			edge_b = WMIN(scr->totalUsableArea[head].y2, rect.pos.y + rect.size.height);
+
+			/* at the edge of the screen, the border stops in the bezel */
+			if (HAS_BORDER_WITH_SELECT(wwin)) {
+				int bw = scr->frame_border_width;
+				int mid_x = data->realX + data->winWidth / 2;
+				int mid_y = data->realY + data->winHeight / 2;
+
+				if (wPointInBezel(scr, l_edge - 1, mid_y))
+					l_edge -= bw;
+				if (wPointInBezel(scr, edge_r, mid_y))
+					edge_r += bw;
+				if (wPointInBezel(scr, mid_x, t_edge - 1))
+					t_edge -= bw;
+				if (wPointInBezel(scr, mid_x, edge_b))
+					edge_b += bw;
+			}
+
+			edge_l = l_edge - resist;
 			r_edge = edge_r + resist;
 
 			/* 1 */
@@ -1182,9 +1201,7 @@ updateWindowPosition(WWindow * wwin, MoveData * data, Bool doResistance,
 
 			/* VeRT */
 			/* Add inter head resistance 2/2 (if needed) */
-			t_edge = WMAX(scr->totalUsableArea[head].y1, rect.pos.y);
 			edge_t = t_edge - resist;
-			edge_b = WMIN(scr->totalUsableArea[head].y2, rect.pos.y + rect.size.height);
 			b_edge = edge_b + resist;
 
 			if ((data->bottomIndex >= 0) && (data->bottomIndex <= data->count)) {
@@ -1797,9 +1814,7 @@ int wKeyboardMoveResizeWindow(WWindow * wwin)
 					}
 				} else {
 					if (wWindowForgetMaximized(wwin, ww != original_w, wh != original_h)) {
-						/* keep the frame, which got its decorations back, in the geometry chosen */
-						ww -= 2 * scr->frame_border_width;
-						wh -= 2 * scr->frame_border_width;
+						/* keep the frame, which got its resizebar back, in the geometry chosen */
 						vert_border = wwin->frame->top_width + wwin->frame->bottom_width;
 					}
 
@@ -2460,9 +2475,7 @@ void wMouseResizeWindow(WWindow * wwin, XEvent * ev)
 				XUngrabServer(dpy);
 
 				if (wWindowForgetMaximized(wwin, fw != original_fw, fh != original_fh)) {
-					/* keep the frame, which got its decorations back, in the geometry chosen */
-					fw -= 2 * scr->frame_border_width;
-					fh -= 2 * scr->frame_border_width;
+					/* keep the frame, which got its resizebar back, in the geometry chosen */
 					vert_border = wwin->frame->top_width + wwin->frame->bottom_width;
 				}
 

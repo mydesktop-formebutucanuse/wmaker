@@ -27,17 +27,30 @@ Without libcanberra (or with --disable-sound) Window Maker is built without
 the sounds.
 
 
-Maximized windows have no border and no resizebar
--------------------------------------------------
+Maximized windows: no resizebar, the border in the bezel
+--------------------------------------------------------
 
-A window that is maximized in both directions now loses its border and its
-resizebar, so that it fills the whole area: they are of no use there and they
-took room from the window. They come back as soon as the window is no longer
-maximized: when it is unmaximized, resized, or dragged away with
-DragMaximizedWindow set to RestoreGeometry or Unmaximize. The titlebar stays.
+A window that is maximized in both directions now loses its resizebar, so
+that it fills the whole area: it is of no use there and it took room from the
+window. It comes back as soon as the window is no longer maximized: when it
+is unmaximized, resized, or dragged away with DragMaximizedWindow set to
+RestoreGeometry or Unmaximize. The titlebar stays.
 
-The windows maximized in one direction only, in a half or a quarter of the
-screen, or with Maximus keep their decorations.
+The border of a maximized window stays, but the sides that touch the edge of
+the screen have it out of the screen, in the bezel. So a window maximized in
+full shows no border where the screen ends, and two windows in the halves of
+the screen show it only where they meet. This goes for all the ways to
+maximize: in full, in one direction, in a half or a quarter, with Maximus, or
+by dragging a window to the edge with WindowSnapping. On a screen with a
+camera notch, the strip of the notch counts as bezel: the top border of the
+windows maximized below it goes into the strip. Next to the dock, a reserved
+area or another monitor, the border is shown as before. With a scale factor
+(GSScaleFactor = 2, for example) the border is as wide as FrameBorderWidth
+scaled, and goes out by that width.
+
+The edge resistance and the attraction of the moves stop a window at the same
+place: when it is moved against the edge of the screen, its border goes into
+the bezel.
 
 
 Saving the attributes of windows

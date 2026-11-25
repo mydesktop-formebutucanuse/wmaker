@@ -336,6 +336,36 @@ int wGetHeadForPointerLocation(WScreen * scr)
 	return wGetHeadForPoint(scr, point);
 }
 
+/*
+ * Tells if the point is in the bezel of the screen, where the border of a
+ * window can go without being seen: out of all the heads, or in the strip of
+ * the camera notch, which the windows that are maximized stay below
+ */
+Bool wPointInBezel(WScreen *scr, int x, int y)
+{
+	WMRect *strip = &scr->notch.strip;
+	int i;
+
+	if (x < 0 || y < 0 || x >= scr->scr_width || y >= scr->scr_height)
+		return True;
+
+	if (strip->size.height > 0 &&
+	    x >= strip->pos.x && x < strip->pos.x + (int)strip->size.width &&
+	    y >= strip->pos.y && y < strip->pos.y + (int)strip->size.height)
+		return True;
+
+	for (i = 0; i < scr->xine_info.count; i++) {
+		WMRect *rect = &scr->xine_info.screens[i];
+
+		if (x >= rect->pos.x && x < rect->pos.x + (int)rect->size.width &&
+		    y >= rect->pos.y && y < rect->pos.y + (int)rect->size.height)
+			return False;
+	}
+
+	/* without the list of the heads, the screen is the only one */
+	return scr->xine_info.count > 0;
+}
+
 /* get the dimensions of the head */
 WMRect wGetRectForHead(WScreen * scr, int head)
 {
