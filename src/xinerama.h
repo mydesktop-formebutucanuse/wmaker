@@ -55,6 +55,8 @@ int wGetHeadForPointerLocation(WScreen *scr);
 
 WMRect wGetRectForHead(WScreen *scr, int head);
 
+Bool wPointInBezel(WScreen *scr, int x, int y);
+
 WArea wGetUsableAreaForHead(WScreen *scr, int head, WArea *totalAreaPtr, Bool noicons);
 
 WMPoint wGetPointToCenterRectInHead(WScreen *scr, int head, int width, int height);

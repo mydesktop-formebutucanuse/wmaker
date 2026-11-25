@@ -446,6 +446,66 @@ void update_saved_geometry(WWindow *wwin)
 		save_old_geometry(wwin, SAVE_GEOMETRY_X);
 }
 
+/*
+ * Tells if the side of the frame that goes from (x1, y1) to (x2, y2) lies on
+ * the bezel: it is on the screen, and the line beyond it, (dx, dy) away, is
+ * out of all the heads (and not on another monitor)
+ */
+static Bool side_on_bezel(WScreen *scr, int x1, int y1, int x2, int y2, int dx, int dy)
+{
+	int mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+
+	return !wPointInBezel(scr, mx, my) &&
+	       wPointInBezel(scr, x1 + dx, y1 + dy) &&
+	       wPointInBezel(scr, mx + dx, my + dy) &&
+	       wPointInBezel(scr, x2 + dx, y2 + dy);
+}
+
+/*
+ * The sides of a maximized frame that touch the edge of the screen get their
+ * border out of the screen, in the bezel: the border is seen only between
+ * windows, or next to the dock and the other reserved areas. The strip of
+ * the camera notch counts as bezel: the top border goes in it.
+ *
+ * x and y are the position of the frame, width and height the size of the
+ * client, as for wWindowConfigure().
+ */
+static void put_border_in_bezel(WWindow *wwin, int *x, int *y,
+				unsigned int *width, unsigned int *height)
+{
+	WScreen *scr = wwin->screen_ptr;
+	int bw, left, top, right, bottom;
+	Bool out_left, out_right, out_top, out_bottom;
+
+	if (!HAS_BORDER(wwin) || scr->frame_border_width <= 0)
+		return;
+	bw = scr->frame_border_width;
+
+	/* the outer edges of the frame, the last pixels it covers */
+	left = *x;
+	top = *y;
+	right = left + (int)*width + 2 * bw - 1;
+	bottom = top + (int)*height + wwin->frame->top_width + wwin->frame->bottom_width + 2 * bw - 1;
+
+	out_left = side_on_bezel(scr, left, top, left, bottom, -1, 0);
+	out_right = side_on_bezel(scr, right, top, right, bottom, 1, 0);
+	out_top = side_on_bezel(scr, left, top, right, top, 0, -1);
+	out_bottom = side_on_bezel(scr, left, bottom, right, bottom, 0, 1);
+
+	if (out_left) {
+		*x -= bw;
+		*width += bw;
+	}
+	if (out_right)
+		*width += bw;
+	if (out_top) {
+		*y -= bw;
+		*height += bw;
+	}
+	if (out_bottom)
+		*height += bw;
+}
+
 void wMaximizeWindow(WWindow *wwin, int directions, int head)
 {
 	unsigned int new_width, new_height, half_scr_width, half_scr_height;
@@ -498,8 +558,8 @@ void wMaximizeWindow(WWindow *wwin, int directions, int head)
 
 	/*
 	 * Set the maximization state before computing the geometry: a window
-	 * maximized in both directions loses its resizebar and its border, and
-	 * the size of the client depends on them
+	 * maximized in both directions loses its resizebar, and the size of the
+	 * client depends on it
 	 */
 	wwin->flags.maximized = directions;
 	if ((wwin->flags.old_maximized & MAX_MAXIMUS) && !wwin->flags.maximized)
@@ -599,6 +659,8 @@ void wMaximizeWindow(WWindow *wwin, int directions, int head)
 
 	wWindowCropSize(wwin, usableArea.x2 - usableArea.x1,
 			usableArea.y2 - usableArea.y1, &new_width, &new_height);
+
+	put_border_in_bezel(wwin, &new_x, &new_y, &new_width, &new_height);
 
 	wWindowConfigure(wwin, new_x, new_y, new_width, new_height);
 	wWindowSynthConfigureNotify(wwin);
@@ -1035,7 +1097,7 @@ void wUnmaximizeWindow(WWindow *wwin)
 
 	wwin->flags.maximized = 0;
 	wwin->flags.old_maximized = 0;
-	/* give back the resizebar and the border that a maximized window doesn't have */
+	/* give back the resizebar that a maximized window doesn't have */
 	wWindowConfigureBorders(wwin);
 	wWindowConfigure(wwin, x, y, w, h);
 	wWindowSynthConfigureNotify(wwin);
@@ -1047,8 +1109,8 @@ void wUnmaximizeWindow(WWindow *wwin)
  * The window was moved or resized by another way than (un)maximizing it:
  * forget the maximized state in the directions that are no longer filled.
  *
- * Returns True if the window got back the resizebar and the border that a
- * fully maximized window doesn't have, which makes its frame bigger.
+ * Returns True if the window got back the resizebar that a fully maximized
+ * window doesn't have, which makes its frame higher.
  */
 Bool wWindowForgetMaximized(WWindow *wwin, Bool horizontal, Bool vertical)
 {

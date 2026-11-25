@@ -306,10 +306,14 @@ typedef struct WWindow {
 } WWindow;
 
 #define HAS_TITLEBAR(w)		(!(WFLAGP((w), no_titlebar) || (w)->flags.fullscreen))
-/* a window maximized in both directions fills the screen: it gets neither a resizebar nor a border */
+/*
+ * A window maximized in both directions fills the screen: it gets no
+ * resizebar. Its border stays, out of the screen on the sides that touch the
+ * bezel (see wMaximizeWindow).
+ */
 #define IS_FULLY_MAXIMIZED(w)	(((w)->flags.maximized & (MAX_HORIZONTAL | MAX_VERTICAL)) == (MAX_HORIZONTAL | MAX_VERTICAL))
 #define HAS_RESIZEBAR(w)	(!(WFLAGP((w), no_resizebar) || (w)->flags.fullscreen || IS_FULLY_MAXIMIZED(w)))
-#define HAS_BORDER(w)		(!(WFLAGP((w), no_border) || (w)->flags.fullscreen || IS_FULLY_MAXIMIZED(w)))
+#define HAS_BORDER(w)		(!(WFLAGP((w), no_border) || (w)->flags.fullscreen))
 #define IS_MOVABLE(w)		(!(WFLAGP((w), no_movable) || (w)->flags.fullscreen))
 #define IS_RESIZABLE(w)		(!(WFLAGP((w), no_resizable) || (w)->flags.fullscreen))
 #define IS_OMNIPRESENT(w)	((w)->flags.omnipresent | WFLAGP(w, omnipresent))
