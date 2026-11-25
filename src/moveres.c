@@ -945,6 +945,15 @@ static void updateMoveData(WWindow * wwin, MoveData * data)
 	}
 }
 
+/* The size of the frame, with its border, that the move works with */
+static void setMoveDataSize(WWindow *wwin, MoveData *data)
+{
+	int bw = HAS_BORDER_WITH_SELECT(wwin) ? 2 * wwin->screen_ptr->frame_border_width : 0;
+
+	data->winWidth = wwin->frame->core->width + bw;
+	data->winHeight = wwin->frame->core->height + bw;
+}
+
 static void initMoveData(WWindow * wwin, MoveData * data)
 {
 	int i;
@@ -968,8 +977,7 @@ static void initMoveData(WWindow * wwin, MoveData * data)
 	data->calcX = wwin->frame_x;
 	data->calcY = wwin->frame_y;
 
-	data->winWidth = wwin->frame->core->width + (HAS_BORDER_WITH_SELECT(wwin) ? 2 * wwin->screen_ptr->frame_border_width : 0);
-	data->winHeight = wwin->frame->core->height + (HAS_BORDER_WITH_SELECT(wwin) ? 2 * wwin->screen_ptr->frame_border_width : 0);
+	setMoveDataSize(wwin, data);
 
 	data->snap = SNAP_NONE;
 }
@@ -2033,6 +2041,8 @@ int wMouseMoveWindow(WWindow * wwin, XEvent * ev)
 						wWindowMove(wwin, new_x, new_y);
 						moveData.realX = moveData.calcX = wwin->frame_x;
 						moveData.realY = moveData.calcY = wwin->frame_y;
+						/* the position display and the edges follow the restored size */
+						setMoveDataSize(wwin, &moveData);
 					}
 					if (wPreferences.drag_maximized_window == DRAGMAX_UNMAXIMIZE) {
 						wWindowForgetMaximized(wwin, True, True);
