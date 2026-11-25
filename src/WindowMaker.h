@@ -519,6 +519,9 @@ extern struct WPreferences {
     int switch_panel_icon_size;               /* icon size in switch panel */
     char *screenshot_filename_template;       /* strftime format for screenshot filenames */
 
+    char *sound_theme;                        /* XDG sound theme of the event sounds */
+    char **sound_events;                      /* events that make a sound, NULL-terminated */
+
 } wPreferences;
 
 /****** Global Variables  ******/

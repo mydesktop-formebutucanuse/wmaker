@@ -77,6 +77,8 @@ wmaker_SOURCES = 	\
 	session.c \
 	shutdown.h \
 	shutdown.c \
+	sound.c \
+	sound.h \
 	switchpanel.c \
 	switchpanel.h \
 	stacking.c \
@@ -156,7 +158,7 @@ xmodifier.hack_nf.c: xmodifier.c $(top_srcdir)/script/nested-func-to-macro.sh
 endif
 
 
-AM_CFLAGS = @PANGO_CFLAGS@
+AM_CFLAGS = @PANGO_CFLAGS@ @CANBERRA_CFLAGS@
 
 AM_CPPFLAGS = $(DFLAGS) \
 	-I$(top_builddir)/wrlib \
@@ -175,6 +177,7 @@ wmaker_LDADD = \
 	@LIBXKBFILE@ \
 	@XRENDER_LIBS@ \
 	@XLIBS@ \
+	@CANBERRA_LIBS@ \
 	@LIBM@
 
 ######################################################################

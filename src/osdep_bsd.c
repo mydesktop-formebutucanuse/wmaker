@@ -180,3 +180,21 @@ Bool GetCommandForPid(int pid, char ***argv, int *argc)
 	(*argv)[j] = NULL;
 	return True;
 }
+
+
+/* No power supply events here: the charger sounds are not available */
+int wOSOpenPowerEvents(void)
+{
+	return -1;
+}
+
+int wOSReadPowerEvents(int fd)
+{
+	(void) fd;
+	return -1;
+}
+
+int wOSMainsOnline(void)
+{
+	return -1;
+}

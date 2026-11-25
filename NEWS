@@ -3,6 +3,30 @@ NEWS for veteran Window Maker users
 
 -- 0.97.0
 
+Event sounds
+------------
+
+Window Maker plays the sounds of a few events through libcanberra, from an
+XDG sound theme, the one that desktops use for their event sounds:
+
+  - power-plug and power-unplug: a charger is plugged in or out (Linux, read
+    from the kernel's power supply events)
+  - window-attention: a window asks for attention (its urgency hint is set)
+
+SoundEvents lists the events that make a sound; it is ("power-plug") by
+default, so that only plugging in a charger is heard. SoundTheme is the name
+of the theme, "freedesktop" by default; a theme that has only some sounds
+can inherit the others from freedesktop. For example:
+
+  SoundTheme = macos;
+  SoundEvents = ("power-plug", "window-attention");
+
+The kernel's events are only listened to while power-plug or power-unplug is
+in the list, and a change of the two options takes effect without a restart.
+Without libcanberra (or with --disable-sound) Window Maker is built without
+the sounds.
+
+
 Maximized windows have no border and no resizebar
 -------------------------------------------------
 
